@@ -12,10 +12,8 @@ client = ElevenLabs(
 # 3. Generate the audio stream
 print("Generating audio...")
 audio_generator = client.text_to_speech.convert(
-    text="Hello! This audio was generated step-by-step using Python.",
-    voice_id="JBFqnCBsd6RMkjVDRZzb",   # Target voice ID (George)
-    model_id="eleven_multilingual_v2", # Supports multiple languages and nuance
-    output_format="mp3_44100_128",     # Set audio quality
+    text="One crisp, dry closed hi-hat cymbal hit", 
+    duration_seconds=1.0,
 )
 
 # 4. Save the generated stream into a local MP3 file
