@@ -2,12 +2,11 @@
   const hiHat = new Audio("/sounds/hi_hat.mp3");
 
 document.addEventListener("keydown", (event) => {
-  if (event.code === "Space" &&
-      !event.repeat) {
-    event.preventDefault();
+  if (event.code !== "Space" || event.repeat) return;
 
-    hiHat.currentTime = 0;
-    hiHat.play();
-  }
+  event.preventDefault();
+
+  const hiHat = new Audio("/sounds/hi_hat.mp3");
+  hiHat.play();
 });
 </script>
