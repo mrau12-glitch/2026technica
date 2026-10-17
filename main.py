@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 from elevenlabs.client import ElevenLabs
+from pathlib import Path
 # 1. Load variables from the .env file
 load_dotenv()
 
@@ -14,6 +15,11 @@ audio_generator = client.text_to_speech.convert(
     text="One crisp, dry closed hi-hat cymbal hit", 
     duration_seconds=1.0,
 )
+
+
+
+# Create the sounds folder if it doesn't exist
+Path("sounds").mkdir(exist_ok=True)
 # stores the hi-hat in a file named hi-hat.mp3
 output_filename = "hi-hat.mp3"
 with open(output_filename, "wb") as file:
