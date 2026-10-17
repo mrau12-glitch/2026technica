@@ -9,15 +9,13 @@ client = ElevenLabs(
     api_key=os.getenv("ELEVENLABS_API_KEY")
 )
 
-# 3. Generate the audio stream
-print("Generating audio...")
+# generates a hi-hat sound
 audio_generator = client.text_to_speech.convert(
     text="One crisp, dry closed hi-hat cymbal hit", 
     duration_seconds=1.0,
 )
-
-# 4. Save the generated stream into a local MP3 file
-output_filename = "output.mp3"
+# stores the hi-hat in a file named hi-hat.mp3
+output_filename = "hi-hat.mp3"
 with open(output_filename, "wb") as file:
     for chunk in audio_generator:
         file.write(chunk)
