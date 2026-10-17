@@ -11,19 +11,45 @@ client = ElevenLabs(
 )
 
 # generates a hi-hat sound
-audio_generator = client.text_to_speech.convert(
+closed_hi_hat = client.text_to_speech.convert(
     text="One crisp, dry closed hi-hat cymbal hit", 
-    duration_seconds=1.0,
+    duration_seconds=0.3,
 )
-
-
-
+kick = client.text_to_speech.convert(
+    text="A single punchy electronic kick drum hit with deep bass, a sharp attack, and a short decay. Clean, dry sound. No extra percussion.", 
+    duration_seconds=0.3,
+)
+snare = client.text_to_speech.convert(
+    text="A single punchy snare drum hit with a sharp crack, crisp high-end, and a tight, short decay. Clean, dry sound. No extra percussion.", 
+    duration_seconds=0.3,
+)
+low_tom = client.text_to_speech.convert(
+    text="A single deep, resonant low tom drum hit with a warm, hollow boom and a short decay. Clean, dry sound. No extra percussion.", 
+    duration_seconds=0.3,
+)
+open_hi_hat = client.text_to_speech.convert(
+    text="A single deep, resonant low tom drum hit with a warm, hollow boom and a short decay. Clean, dry sound. No extra percussion.", 
+    duration_seconds=0.3,
+)
+high_tom = client.text_to_speech.convert(
+    text="A single deep, resonant low tom drum hit with a warm, hollow boom and a short decay. Clean, dry sound. No extra percussion.", 
+    duration_seconds=0.3,
+)
+bass = client.text_to_speech.convert(
+    text="A single deep, resonant low tom drum hit with a warm, hollow boom and a short decay. Clean, dry sound. No extra percussion.", 
+    duration_seconds=0.3,
+)
+shaker = client.text_to_speech.convert(
+    text="A single deep, resonant low tom drum hit with a warm, hollow boom and a short decay. Clean, dry sound. No extra percussion.", 
+    duration_seconds=0.3,
+)
+drums=[closed_hi_hat, kick, snare, low_tom, open_hi_hat, high_tom, bass, shaker]
 # Create the sounds folder if it doesn't exist
 Path("sounds").mkdir(exist_ok=True)
 # stores the hi-hat in a file named hi-hat.mp3
-output_filename = "hi-hat.mp3"
-with open(output_filename, "wb") as file:
-    for chunk in audio_generator:
-        file.write(chunk)
-
-print(file_name=f"Success! Audio saved to {output_filename}")
+for drum in drums:
+    output_filename = "sounds/"+str(drum)+".mp3"
+    with open(output_filename, "wb") as file:
+        for chunk in drum:
+            file.write(chunk)
+    print(file_name=f"Success! Audio saved to {output_filename}")
