@@ -13,35 +13,35 @@ client = ElevenLabs(
 # generates a hi-hat sound
 closed_hi_hat = client.text_to_sound_effects.convert(
     text="One crisp, dry closed hi-hat cymbal hit", 
-    duration_seconds=0.3,
+    duration_seconds=0.5,
 )
 kick = client.text_to_sound_effects.convert(
     text="A single punchy electronic kick drum hit with deep bass, a sharp attack, and a short decay. Clean, dry sound. No extra percussion.", 
-    duration_seconds=0.3,
+    duration_seconds=0.5,
 )
 snare = client.text_to_sound_effects.convert(
     text="A single punchy snare drum hit with a sharp crack, crisp high-end, and a tight, short decay. Clean, dry sound. No extra percussion.", 
-    duration_seconds=0.3,
+    duration_seconds=0.5,
 )
 low_tom = client.text_to_sound_effects.convert(
     text="A single deep, resonant low tom drum hit with a warm, hollow boom and a short decay. Clean, dry sound. No extra percussion.", 
-    duration_seconds=0.3,
+    duration_seconds=0.5,
 )
 open_hi_hat = client.text_to_sound_effects.convert(
     text="A single deep, resonant low tom drum hit with a warm, hollow boom and a short decay. Clean, dry sound. No extra percussion.", 
-    duration_seconds=0.3,
+    duration_seconds=0.5,
 )
 high_tom = client.text_to_sound_effects.convert(
     text="A single deep, resonant low tom drum hit with a warm, hollow boom and a short decay. Clean, dry sound. No extra percussion.", 
-    duration_seconds=0.3,
+    duration_seconds=0.5,
 )
 bass = client.text_to_sound_effects.convert(
     text="A single deep, resonant low tom drum hit with a warm, hollow boom and a short decay. Clean, dry sound. No extra percussion.", 
-    duration_seconds=0.3,
+    duration_seconds=0.5,
 )
 shaker = client.text_to_sound_effects.convert(
     text="A single deep, resonant low tom drum hit with a warm, hollow boom and a short decay. Clean, dry sound. No extra percussion.", 
-    duration_seconds=0.3,
+    duration_seconds=0.5,
 )
 drums = [
     (closed_hi_hat, "closed_hi_hat"),
