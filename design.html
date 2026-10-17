@@ -1,5 +1,12 @@
 <script>
-  const hiHat = new Audio("/sounds/hi_hat.mp3");
+  const closed_hi_hat = new Audio("/sounds/closed_hi_hat.mp3");
+  const kick = new Audio("/sounds/kick.mp3");
+  const snare = new Audio("/sounds/snare.mp3");
+  const low_tom = new Audio("/sounds/low_tom.mp3");
+  const open_hi_hat = new Audio("/sounds/open_hi_hat.mp3");
+  const high_tom = new Audio("/sounds/high_tom.mp3");
+  const bass = new Audio("/sounds/bass.mp3");
+  const shaker = new Audio("/sounds/shaker.mp3");
 
 document.addEventListener("keydown", (event) => {
   if (event.code !== "Space" || event.repeat) return;
