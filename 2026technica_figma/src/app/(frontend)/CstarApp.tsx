@@ -240,13 +240,54 @@ export default function App() {
     setReadStatus('loading')
 
     try {
-      const response = await fetch('/api/speech/read', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: narration.join(' ... ') }),
-        signal: controller.signal,
-      })
-      if (!response.ok) throw new Error('ElevenLabs narration is unavailable.')
+      const text = narration.join(' ... ')
+      const configResponse = await fetch('/api/speech/read', { method: 'GET', cache: 'no-store' })
+      if (!configResponse.ok) throw new Error('Narration settings are unavailable.')
+      const speechConfig = await configResponse.json() as {
+        voiceId: string
+        modelId: string
+        outputFormat: string
+        voiceSettings: Record<string, unknown>
+      }
+
+      let response: Response | undefined
+      let narrationCache: Cache | null = null
+      let cacheKey: string | null = null
+      if ('caches' in window && window.crypto?.subtle) {
+        try {
+          const cacheProfile = JSON.stringify({ version: 1, ...speechConfig })
+          const digest = await window.crypto.subtle.digest(
+            'SHA-256',
+            new TextEncoder().encode(`${cacheProfile}\\0${text}`),
+          )
+          const cacheHash = Array.from(new Uint8Array(digest))
+            .map(byte => byte.toString(16).padStart(2, '0'))
+            .join('')
+          cacheKey = `${window.location.origin}/__cstar-narration-cache__/${cacheHash}`
+          narrationCache = await window.caches.open('cstar-narration-audio-v1')
+          response = await narrationCache.match(cacheKey)
+        } catch {
+          narrationCache = null
+          cacheKey = null
+        }
+      }
+
+      if (!response) {
+        response = await fetch('/api/speech/read', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+          signal: controller.signal,
+        })
+        if (!response.ok) throw new Error('ElevenLabs narration is unavailable.')
+        if (narrationCache && cacheKey) {
+          try {
+            await narrationCache.put(cacheKey, response.clone())
+          } catch {
+            // Play the generated audio even if browser storage is full or unavailable.
+          }
+        }
+      }
 
       const audioUrl = URL.createObjectURL(await response.blob())
       narrationUrlRef.current = audioUrl
