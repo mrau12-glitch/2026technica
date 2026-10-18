@@ -423,6 +423,7 @@ export default function App() {
           'D for Snare.',
           'F for Open Hi-Hat.',
           'G plays or pauses all layers. H adds a layer. R starts or stops recording.',
+          'Press Shift plus S to save this drum track to the project.',
           drumSequence.length ? `Your current pattern has ${drumSequence.length} hits across ${drumLayers.length} layers.` : 'Press R to hear a four-beat count-in. A higher tone signals recording start. The metronome continues during recording and stops when recording ends. Press R again to stop and commit the layer.',
         ]
       } else {
@@ -430,6 +431,7 @@ export default function App() {
           `Create ${trackType === 'melody' ? 'a Melodic Instrument' : 'Vocals'}.`,
           'Describe the track in words or record a musical reference.',
           generationError || (trackType === 'melody' ? 'Then generate it with Eleven Music.' : 'Then add the vocal track.'),
+          'Press Shift plus S to save this track to the project.',
         ]
       }
     } else if (page === 'home') {
@@ -1162,6 +1164,7 @@ export default function App() {
         toggleDrumRecording()
         return
       }
+      if (event.shiftKey && event.key.toLowerCase() === 's') return
       const pad = drumPads.find(item =>
         item.eventKey === event.key.toLowerCase() ||
         (item.id === 'shaker' && event.code === 'Semicolon'),
@@ -1295,6 +1298,18 @@ export default function App() {
     void announcePlaybackShortcut()
   }
 
+  useEffect(() => {
+    if (!showDescribe || !trackType) return
+    const handleSaveShortcut = (event: KeyboardEvent) => {
+      if (event.repeat || !event.shiftKey || event.key.toLowerCase() !== 's') return
+      const target = event.target as HTMLElement | null
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      event.preventDefault()
+      void addTrack()
+    }
+    window.addEventListener('keydown', handleSaveShortcut)
+    return () => window.removeEventListener('keydown', handleSaveShortcut)
+  }, [addTrack, showDescribe, trackType])
   const startProjectPlayback = (startAtMs: number) => {
     const startTime = startAtMs >= projectLoopDurationMs ? 0 : Math.max(0, startAtMs)
     playbackStartedAtRef.current = performance.now() - startTime
@@ -1693,7 +1708,7 @@ export default function App() {
 
                 <button onClick={() => setIsListening(!isListening)} className={`focus-ring mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl border font-bold ${isListening ? 'border-[#a5483d] bg-[#fff2ef] text-[#8c352c]' : 'border-[#b8d3df] text-[#075b83] hover:bg-[#eef8fc]'}`}><Icon name={isListening ? 'pause' : 'mic'} size={17}/>{isListening ? 'Listening — tap to stop' : 'Dictate the description instead'}</button>
                 {generationError && <p role="alert" className="mt-4 rounded-xl bg-[#fff0ed] px-4 py-3 text-sm font-medium text-[#8f382f]">{generationError}</p>}
-                <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button onClick={closeDescribe} disabled={isGenerating} className="focus-ring rounded-xl px-5 py-3 font-bold text-[#526f7d] hover:bg-[#eef7fb] disabled:cursor-not-allowed disabled:opacity-50">Cancel</button><button onClick={addTrack} disabled={isGenerating} className="focus-ring flex min-w-40 items-center justify-center gap-2 rounded-xl bg-[#046492] px-5 py-3 font-bold text-white hover:bg-[#03577f] disabled:cursor-wait disabled:opacity-70"><Icon name={trackType === 'drums' ? 'save' : 'sparkles'} size={18}/>{isGenerating ? (trackType === 'drums' ? 'Rendering…' : 'Generating…') : trackType === 'vocals' ? 'Add vocal track' : trackType === 'drums' ? 'Save Drum Track' : 'Generate with Eleven Music'}</button></div>
+                <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button onClick={closeDescribe} disabled={isGenerating} className="focus-ring rounded-xl px-5 py-3 font-bold text-[#526f7d] hover:bg-[#eef7fb] disabled:cursor-not-allowed disabled:opacity-50">Cancel</button><button onClick={addTrack} disabled={isGenerating} className="focus-ring flex min-w-40 items-center justify-center gap-2 rounded-xl bg-[#046492] px-5 py-3 font-bold text-white hover:bg-[#03577f] disabled:cursor-wait disabled:opacity-70"><Icon name={trackType === 'drums' ? 'save' : 'sparkles'} size={18}/>{isGenerating ? (trackType === 'drums' ? 'Rendering…' : 'Generating…') : trackType === 'vocals' ? 'Add vocal track' : trackType === 'drums' ? 'Save Drum Track' : 'Generate with Eleven Music'}{!isGenerating && <kbd className="ml-1 rounded border border-white/40 px-1.5 py-0.5 font-mono text-[10px]">Shift+S</kbd>}</button></div>
               </>
             )}
           </section>
