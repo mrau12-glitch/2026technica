@@ -116,6 +116,28 @@ const drumPads = [
 let drumAudioContext: AudioContext | null = null
 const scheduledDrumLoopSources = new Set<AudioScheduledSourceNode>()
 const scheduledDrumMetronomeSources = new Set<AudioScheduledSourceNode>()
+let drumNoiseBufferContext: AudioContext | null = null
+const drumNoiseBuffers = new Map<string, AudioBuffer>()
+
+function getDrumNoiseBuffer(context: AudioContext, id: string) {
+  if (drumNoiseBufferContext !== context) {
+    drumNoiseBufferContext = context
+    drumNoiseBuffers.clear()
+  }
+  const cached = drumNoiseBuffers.get(id)
+  if (cached) return cached
+
+  const bufferDuration = 2
+  const duration = id === 'open_hi_hat' ? 0.42 : id === 'shaker' ? 0.22 : id === 'snare' ? 0.18 : 0.08
+  const buffer = context.createBuffer(1, context.sampleRate * bufferDuration, context.sampleRate)
+  const data = buffer.getChannelData(0)
+  for (let i = 0; i < data.length; i++) {
+    const noise = Math.random() * 2 - 1
+    data[i] = id === 'shaker' ? noise * (i % 13 < 4 ? 1 : 0.18) : noise
+  }
+  drumNoiseBuffers.set(id, buffer)
+  return buffer
+}
 
 function trackDrumLoopSource(source: AudioScheduledSourceNode) {
   scheduledDrumLoopSources.add(source)
@@ -176,12 +198,7 @@ function playDrumSound(id: string, scheduledAt?: number, isLoopPlayback = false)
   }
 
   const duration = id === 'open_hi_hat' ? 0.42 : id === 'shaker' ? 0.22 : id === 'snare' ? 0.18 : 0.08
-  const buffer = context.createBuffer(1, context.sampleRate * duration, context.sampleRate)
-  const data = buffer.getChannelData(0)
-  for (let i = 0; i < data.length; i++) {
-    const noise = Math.random() * 2 - 1
-    data[i] = id === 'shaker' ? noise * (i % 13 < 4 ? 1 : 0.18) : noise
-  }
+  const buffer = getDrumNoiseBuffer(context, id)
   const source = context.createBufferSource()
   const filter = context.createBiquadFilter()
   filter.type = id.includes('hi_hat') || id === 'shaker' ? 'highpass' : 'bandpass'
@@ -191,7 +208,8 @@ function playDrumSound(id: string, scheduledAt?: number, isLoopPlayback = false)
   source.buffer = buffer
   source.connect(filter)
   filter.connect(gain)
-  source.start(now)
+  const offset = Math.random() * (2 - duration)
+  source.start(now, offset, duration)
   if (isLoopPlayback) trackDrumLoopSource(source)
 }
 
@@ -236,7 +254,7 @@ export default function App() {
   const drumMetronomeTimerRef = useRef<number | null>(null)
   const nextDrumMetronomeBeatRef = useRef<number | null>(null)
   const drumFlashTimerRef = useRef<number | null>(null)
-  const lastBassTriggerAtRef = useRef<number>(-Infinity)
+  const lastDrumTriggerAtRef = useRef<Map<string, number>>(new Map())
   const isDrumRecordingRef = useRef(false)
   const isDrumCountInRef = useRef(false)
   const drumCountInTimerRef = useRef<number | null>(null)
@@ -636,9 +654,10 @@ export default function App() {
     const pad = drumPads.find(item => item.id === id)
     if (!pad) return
     const triggerAt = window.performance.now()
-    // Ignore near-identical Bass events that can arrive twice from keyboard focus/input handling.
-    if (id === 'bass' && triggerAt - lastBassTriggerAtRef.current < 55) return
-    if (id === 'bass') lastBassTriggerAtRef.current = triggerAt
+    // Ignore near-identical duplicate events for one pad while preserving quick hits on other pads.
+    const lastTriggerAt = lastDrumTriggerAtRef.current.get(id)
+    if (lastTriggerAt !== undefined && triggerAt - lastTriggerAt < 40) return
+    lastDrumTriggerAtRef.current.set(id, triggerAt)
     playDrumSound(id)
     setActiveDrum(id)
     if (drumFlashTimerRef.current !== null) window.clearTimeout(drumFlashTimerRef.current)
