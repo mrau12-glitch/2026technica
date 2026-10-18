@@ -33,7 +33,7 @@ export async function POST(request: Request) {
   const prompt =
     input.type === 'drums'
       ? `Create an instrumental drum and percussion track only, with no vocals and no lead melody. ${rawPrompt || 'A clear, versatile mid-tempo groove with a natural performance.'}`
-      : `Create an instrumental melodic track with no vocals. ${rawPrompt || 'A warm, expressive melody with a clear musical arc and gentle accompaniment.'}`
+      : `Create an instrumental melodic track led by the instrument described by the user. Make the requested melody the clear foreground, following the described movement, rhythm, and emotional mood. Use suitable musical accompaniment only when requested. No vocals. ${rawPrompt || 'A warm, expressive melody with a clear musical arc and gentle accompaniment.'}`
 
   const elevenResponse = await fetch(ELEVEN_MUSIC_URL, {
     method: 'POST',
