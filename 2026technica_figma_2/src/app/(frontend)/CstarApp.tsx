@@ -437,7 +437,7 @@ export default function App() {
         : ['Create-account page. From top to bottom: name, email, password, and Create account. On wide screens, the Cstar welcome panel is on the left.']
     } else if (showDescribe) {
       if (!trackType) {
-        narration = ['Add Track dialog. From left to right: Drums, Melodic Instrument, and Vocals. Choose a type to continue.']
+        narration = ['Add Track dialog. From left to right: Drums and Melodic Instrument. Choose a type to continue.']
       } else if (trackType === 'drums') {
         const activeLayer = drumLayers.find(layer => layer.id === activeDrumLayerId)
         narration = [
@@ -1709,11 +1709,10 @@ export default function App() {
             </div>
 
             {!trackType ? (
-              <div className="mt-7 grid gap-3 sm:grid-cols-3">
+              <div className="mt-7 grid gap-3 sm:grid-cols-2">
                 {[
                   { id: 'drums' as const, title: 'Drums', detail: 'Beats, percussion and rhythm', icon: 'volume' as const, color: '#f3d4bf' },
                   { id: 'melody' as const, title: 'Melodic Instrument', detail: 'Piano, strings, guitar and more', icon: 'sparkles' as const, color: '#cfe8f3' },
-                  { id: 'vocals' as const, title: 'Vocals', detail: 'Singing, humming and spoken voice', icon: 'mic' as const, color: '#ddd5ee' },
                 ].map(option => (
                   <button key={option.id} data-reader-section={option.title} autoFocus={option.id === 'drums'} onClick={() => setTrackType(option.id)} className="focus-ring group flex min-h-48 flex-col items-start rounded-2xl border border-[#d7e8f0] p-5 text-left transition hover:-translate-y-1 hover:border-[#046492] hover:shadow-lg">
                     <span className="grid h-12 w-12 place-items-center rounded-xl text-[#075b83]" style={{ backgroundColor: option.color }}><Icon name={option.icon} size={23}/></span>
@@ -1792,7 +1791,7 @@ export default function App() {
                     {trackType === 'melody' && (
                       <>
                         <div className="mt-3 flex flex-wrap gap-2">
-                          <button type="button" data-reader-section="Dictate melody description" aria-pressed={isMelodyDictating} onClick={() => {
+                          <button type="button" data-reader-section="Dictate melody description" aria-pressed={isMelodyDictating} onClick={async () => {
                             if (isMelodyDictating) {
                               melodySpeechRecognitionRef.current?.stop()
                               return
@@ -1810,24 +1809,42 @@ export default function App() {
                             recognition.interimResults = false
                             recognition.onresult = (event: any) => {
                               const transcript = Array.from(event.results as any[]).map((result: any) => result[0]?.transcript || '').join(' ').trim()
-                              if (transcript) setDescription(current => `${current.trim()}${current.trim() ? ' ' : ''}${transcript}`)
+                              if (transcript) {
+                                setDescription(current => `${current.trim()}${current.trim() ? ' ' : ''}${transcript}`)
+                                setMelodyDictationStatus('Speech was transcribed into the description.')
+                              }
                             }
                             recognition.onerror = (event: any) => {
-                              setMelodyDictationStatus(event.error === 'not-allowed' ? 'Microphone permission was denied.' : 'Could not recognize speech. Please try again or type the description.')
+                              const permissionError = event.error === 'not-allowed' || event.error === 'service-not-allowed'
+                              setMelodyDictationStatus(permissionError
+                                ? 'Microphone access was blocked. In Chrome, open this site’s settings from the icon beside the address bar, set Microphone to Allow, then reload the page.'
+                                : event.error === 'audio-capture'
+                                  ? 'No available microphone was found. Connect or enable a microphone, then try again.'
+                                  : 'Speech recognition could not start. Check microphone permission or type the description.')
                             }
                             recognition.onend = () => {
                               melodySpeechRecognitionRef.current = null
                               setIsMelodyDictating(false)
-                              setMelodyDictationStatus(current => current || 'Speech input finished. The recognized words were added to the description.')
+                              setMelodyDictationStatus(current => current === 'Listening. Speak your instrument, melody, and mood description.' ? 'Speech input finished.' : current)
                             }
                             setMelodyDictationStatus('Listening. Speak your instrument, melody, and mood description.')
                             setIsMelodyDictating(true)
                             try {
+                              if (!navigator.mediaDevices?.getUserMedia) {
+                                throw new Error('Microphone access requires a secure page and browser support.')
+                              }
+                              const permissionStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+                              permissionStream.getTracks().forEach((track: MediaStreamTrack) => track.stop())
                               recognition.start()
-                            } catch {
+                            } catch (error) {
                               melodySpeechRecognitionRef.current = null
                               setIsMelodyDictating(false)
-                              setMelodyDictationStatus('Could not start speech input. Check microphone permission and try again.')
+                              const errorName = (error as { name?: string; message?: string })?.name
+                              setMelodyDictationStatus(errorName === 'NotAllowedError' || errorName === 'SecurityError'
+                                ? 'Microphone access was blocked. In Chrome, open this site’s settings from the icon beside the address bar, set Microphone to Allow, then reload the page.'
+                                : errorName === 'NotFoundError'
+                                  ? 'No microphone was found. Connect or enable a microphone, then try again.'
+                                  : 'Could not access the microphone. Check browser permission and try again.')
                             }
                           }} className={`focus-ring flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-bold ${isMelodyDictating ? 'bg-[#fb9b6d] text-[#17272f]' : 'bg-[#e8f4f8] text-[#075b83] hover:bg-[#d9edf5]'}`}>
                             <Icon name={isMelodyDictating ? 'pause' : 'mic'} size={16}/>{isMelodyDictating ? 'Stop dictation' : 'Dictate description'}
@@ -1842,21 +1859,6 @@ export default function App() {
                   </>
                 )}
 
-                {trackType === 'vocals' && (
-                <div className={`mt-4 rounded-2xl border p-4 transition ${isRecording ? 'border-[#b54a40] bg-[#fff7f5]' : 'border-[#d7e8f0] bg-[#f3f9fc]'}`}>
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-                    <button onClick={() => setIsRecording(!isRecording)} aria-label={isRecording ? 'Stop recording' : 'Start recording'} className={`focus-ring grid h-14 w-14 shrink-0 place-items-center rounded-full text-white shadow-md ${isRecording ? 'bg-[#b54a40]' : 'bg-[#046492]'}`}><span className={isRecording ? 'h-4 w-4 rounded-sm bg-white' : ''}>{!isRecording && <Icon name="mic" size={22}/>}</span></button>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between"><div><strong className="block text-sm">{isRecording ? 'Recording reference…' : 'Record a musical reference'}</strong><span className="text-xs text-[#6b8794]">{isRecording ? 'Play, sing, or tap your idea' : 'Use your microphone to capture the idea'}</span></div><span className={`font-mono text-sm font-bold ${isRecording ? 'text-[#a43f36]' : 'text-[#6b8794]'}`}>{isRecording ? '00:08' : '00:00'}</span></div>
-                      <div className="mt-3 flex h-8 items-center gap-1 overflow-hidden">{[8,18,12,26,16,30,10,22,15,28,12,20,8,24,14,30,18,10,22,16,28,12,18,8].map((height, i) => <i key={i} className={`w-1 flex-1 rounded-full ${isRecording ? 'bg-[#b54a40]' : 'bg-[#b8c4be]'}`} style={{ height: isRecording ? height : 3 }}/>)}</div>
-                    </div>
-                  </div>
-                </div>
-                )}
-
-                {trackType === 'vocals' && (
-                <button onClick={() => setIsListening(!isListening)} className={`focus-ring mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl border font-bold ${isListening ? 'border-[#a5483d] bg-[#fff2ef] text-[#8c352c]' : 'border-[#b8d3df] text-[#075b83] hover:bg-[#eef8fc]'}`}><Icon name={isListening ? 'pause' : 'mic'} size={17}/>{isListening ? 'Listening — tap to stop' : 'Dictate the description instead'}</button>
-                )}
                 {generationError && <p role="alert" className="mt-4 rounded-xl bg-[#fff0ed] px-4 py-3 text-sm font-medium text-[#8f382f]">{generationError}</p>}
                 <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button onClick={closeDescribe} disabled={isGenerating} className="focus-ring rounded-xl px-5 py-3 font-bold text-[#526f7d] hover:bg-[#eef7fb] disabled:cursor-not-allowed disabled:opacity-50">Cancel</button><button onClick={addTrack} disabled={isGenerating} className="focus-ring flex min-w-40 items-center justify-center gap-2 rounded-xl bg-[#046492] px-5 py-3 font-bold text-white hover:bg-[#03577f] disabled:cursor-wait disabled:opacity-70"><Icon name={trackType === 'drums' ? 'save' : 'sparkles'} size={18}/>{isGenerating ? (trackType === 'drums' ? 'Rendering…' : 'Generating…') : trackType === 'vocals' ? 'Add vocal track' : trackType === 'drums' ? 'Save Drum Track' : 'Generate with Eleven Music'}{!isGenerating && <kbd className="ml-1 rounded border border-white/40 px-1.5 py-0.5 font-mono text-[10px]">Shift+S</kbd>}</button></div>
               </>
