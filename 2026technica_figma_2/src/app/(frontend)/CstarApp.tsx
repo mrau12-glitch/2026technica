@@ -437,7 +437,7 @@ export default function App() {
       const trackSummary = projectTracks.length
         ? projectTracks.map((track, index) => `${index === activeTrack ? 'Selected track' : 'Track'} ${index + 1}, ${track.name}, ${track.desc}.`)
         : ['This project has no tracks yet.']
-      narration = [`Project ${projectTitle}.`, `${projectTracks.length} tracks.`, ...trackSummary, 'Press A to add another track.']
+      narration = [`Project ${projectTitle}.`, `${projectTracks.length} tracks.`, ...trackSummary, 'Press J to play or pause the project. Press A to add another track.']
     }
 
     const speakWithDeviceVoice = () => {
@@ -531,7 +531,7 @@ export default function App() {
 
   const announcePlaybackShortcut = useCallback(async () => {
     stopNarration()
-    const text = 'Press J to play the project. Press A to add a track.'
+    const text = 'Press J to play or pause the project. Press A to add a track.'
     const speakWithDeviceVoice = () => {
       if (!('speechSynthesis' in window)) {
         setNarrationSource(null)
@@ -1303,7 +1303,7 @@ export default function App() {
       }
       if (key !== 'j') return
       event.preventDefault()
-      if (!isPlaying) void togglePlayback().catch(() => {})
+      void togglePlayback().catch(() => {})
     }
     window.addEventListener('keydown', handleProjectPlaybackShortcut)
     return () => window.removeEventListener('keydown', handleProjectPlaybackShortcut)
