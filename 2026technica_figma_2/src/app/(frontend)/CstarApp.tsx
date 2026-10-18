@@ -58,6 +58,7 @@ type DrumLayer = {
   id: number
   name: string
   hits: DrumHit[]
+  durationMs?: number
 }
 
 const createInitialDrumLayers = (): DrumLayer[] => [{ id: 1, name: 'Layer 1', hits: [] }]
@@ -84,6 +85,11 @@ function getReaderLocation(target: Element | null) {
   }
   const section = target.closest('[data-reader-section]')
   return section?.getAttribute('data-reader-section') ?? null
+}
+
+function getDrumLoopDurationMs(layers: DrumLayer[]) {
+  const durations = layers.map(layer => layer.durationMs).filter((duration): duration is number => typeof duration === 'number' && Number.isFinite(duration) && duration > 0)
+  return durations.length ? Math.max(...durations) : DRUM_LOOP_DURATION_MS
 }
 
 function formatTimelineTime(milliseconds: number) {
@@ -240,8 +246,8 @@ function playDrumSound(id: string, scheduledAt?: number, isLoopPlayback = false)
 
 async function renderDrumLayersToWav(layers: DrumLayer[]) {
   const sampleRate = 44100
-  const durationSeconds = DRUM_LOOP_DURATION_MS / 1000
-  const frameCount = sampleRate * durationSeconds
+  const durationSeconds = getDrumLoopDurationMs(layers) / 1000
+  const frameCount = Math.ceil(sampleRate * durationSeconds)
   const offline = new OfflineAudioContext(2, frameCount, sampleRate)
   const noiseBuffers = new Map<string, AudioBuffer>()
   for (const layer of layers) {
@@ -906,7 +912,7 @@ export default function App() {
     setDrumStatus(isDrumRecordingRef.current ? 'Playback paused. Recording continues.' : 'Playback paused.')
   }, [clearDrumLoopTimers, stopDrumMetronome])
 
-  const startDrumLoop = useCallback((alignedOrigin?: number) => {
+  const startDrumLoop = useCallback(() => {
     if (drumPlaybackOriginRef.current !== null) return
     clearDrumLoopTimers()
     if (!drumAudioContext || drumAudioContext.state === 'closed') {
@@ -926,14 +932,11 @@ export default function App() {
         context.state !== 'running'
       ) return
 
-      // Preserve the recording's loop phase so the first playback does not immediately replay the live audition.
       const audioOrigin = context.currentTime
-      const performanceOrigin = window.performance.now()
-      const origin = alignedOrigin ?? audioOrigin + 0.06
+      const origin = audioOrigin + 0.06
       drumPlaybackOriginRef.current = origin
-      drumPlaybackOriginPerformanceRef.current = performanceOrigin + (origin - audioOrigin) * 1000
-      const loopDurationSeconds = DRUM_LOOP_DURATION_MS / 1000
-      const initialCycleNumber = Math.max(0, Math.floor((audioOrigin - origin) / loopDurationSeconds))
+      const loopDurationSeconds = getDrumLoopDurationMs(drumLayersRef.current) / 1000
+      const initialCycleNumber = 0
 
       const scheduleCycle = (cycleNumber: number) => {
         drumLoopCycleTimerRef.current = null
@@ -1081,18 +1084,14 @@ export default function App() {
     const recordingLayerId = activeDrumLayerIdRef.current
     let hit: DrumHit | null = null
     if (isDrumRecordingRef.current && drumRecordingOriginRef.current !== null) {
-      const elapsedMs = triggerAt - drumRecordingOriginRef.current
-      const timeMs = ((Math.round(elapsedMs) % DRUM_LOOP_DURATION_MS) + DRUM_LOOP_DURATION_MS) % DRUM_LOOP_DURATION_MS
+      const timeMs = Math.max(0, Math.round(triggerAt - drumRecordingOriginRef.current))
       const layer = drumLayersRef.current.find(item => item.id === recordingLayerId)
-      const isSameLoopPosition = layer?.hits.some(existing => {
-        if (existing.id !== pad.id) return false
-        const distance = Math.abs(existing.timeMs - timeMs)
-        const cyclicDistance = Math.min(distance, DRUM_LOOP_DURATION_MS - distance)
-        return cyclicDistance < 70
-      }) ?? false
+      const isDuplicateAtSameTime = layer?.hits.some(existing =>
+        existing.id === pad.id && Math.abs(existing.timeMs - timeMs) < 70,
+      ) ?? false
 
-      // Recording is a four-beat loop: don't stack a later pass onto an already-recorded hit.
-      if (isSameLoopPosition) return
+      // Suppress only near-identical event duplicates; preserve every later hit in the take.
+      if (isDuplicateAtSameTime) return
       hit = { id: pad.id, name: pad.name, timeMs }
     }
 
@@ -1131,25 +1130,29 @@ export default function App() {
       return
     }
     if (isDrumRecordingRef.current) {
+      const recordingOrigin = drumRecordingOriginRef.current
+      const takeDurationMs = recordingOrigin === null ? DRUM_LOOP_DURATION_MS : Math.max(300, Math.round(window.performance.now() - recordingOrigin))
       isDrumRecordingRef.current = false
       drumRecordingOriginRef.current = null
       setIsDrumRecording(false)
       stopDrumMetronome()
 
-      const committedLayer = drumLayersRef.current.find(
-        layer => layer.id === activeDrumLayerIdRef.current,
+      const recordingLayerId = activeDrumLayerIdRef.current
+      const updatedLayers = drumLayersRef.current.map(layer =>
+        layer.id === recordingLayerId ? { ...layer, durationMs: takeDurationMs } : layer,
       )
+      drumLayersRef.current = updatedLayers
+      setDrumLayers(updatedLayers)
+      const committedLayer = updatedLayers.find(layer => layer.id === recordingLayerId)
       const layerName = committedLayer?.name || 'Active layer'
       const hitCount = committedLayer?.hits.length || 0
       if (committedLayer) committedDrumLayerIdsRef.current.add(committedLayer.id)
-      if (committedLayer?.id === 1 && hitCount > 0 && !playbackIsRunning) {
-        const alignedOrigin = drumRecordingOriginAudioRef.current ?? undefined
-        drumRecordingOriginAudioRef.current = null
-        startDrumLoop(alignedOrigin)
-        setDrumStatus(`${layerName} stopped and committed with ${hitCount} hits. Layer 1 playback started and is looping.`)
+      if (hitCount > 0) {
+        if (playbackIsRunning) stopDrumLoop()
+        startDrumLoop()
+        setDrumStatus(`${layerName} stopped and committed with ${hitCount} hits. This ${formatTimelineTime(takeDurationMs)} take now loops at its recorded length.`)
       } else {
-        drumRecordingOriginAudioRef.current = null
-        setDrumStatus(`${layerName} stopped and committed with ${hitCount} hits.${playbackIsRunning ? ' Existing playback continues.' : ''}`)
+        setDrumStatus(`${layerName} stopped with no hits. Press R to record again.`)
       }
       return
     }
@@ -1197,15 +1200,8 @@ export default function App() {
         drumCountInTimerRef.current = null
         isDrumCountInRef.current = false
         setIsDrumCountIn(false)
-        const recordingOrigin =
-          playbackIsRunning && drumPlaybackOriginPerformanceRef.current !== null
-            ? drumPlaybackOriginPerformanceRef.current
-            : window.performance.now()
+        const recordingOrigin = window.performance.now()
         drumRecordingOriginRef.current = recordingOrigin
-        drumRecordingOriginAudioRef.current =
-          playbackIsRunning && drumPlaybackOriginRef.current !== null
-            ? drumPlaybackOriginRef.current
-            : drumAudioContext?.currentTime ?? null
         playCountInBeat(false, undefined, true)
         startDrumMetronome(recordingOrigin, false)
         isDrumRecordingRef.current = true
@@ -1215,7 +1211,7 @@ export default function App() {
     }
     playCountInBeat(true)
     drumCountInTimerRef.current = window.setTimeout(() => tick(3), beatDurationMs)
-  }, [startDrumLoop, stopDrumMetronome])
+  }, [startDrumLoop, stopDrumLoop, stopDrumMetronome])
 
   useEffect(() => {
     if (!showDescribe || (trackType !== 'drums' && trackType !== 'melody')) return
@@ -1322,9 +1318,10 @@ export default function App() {
     const typeNames = { melody: 'Melodic Instrument', vocals: 'Vocals' }
     let audioUrl: string | undefined
     const recordedLayers = drumLayers.filter(layer => layer.hits.length)
+    const drumDurationMs = getDrumLoopDurationMs(recordedLayers)
     const effectiveDescription =
       trackType === 'drums'
-        ? `Four-beat loop · ${recordedLayers.length} recorded ${recordedLayers.length === 1 ? 'layer' : 'layers'} · 80 BPM`
+        ? `Recorded-length loop · ${recordedLayers.length} recorded ${recordedLayers.length === 1 ? 'layer' : 'layers'} · 80 BPM`
         : description.trim()
 
     if (trackType === 'drums') {
@@ -1369,7 +1366,7 @@ export default function App() {
       color: ['#8fcde8', '#b9d9e8', '#fb9b6d', '#c9e4f0'][projectTracks.length % 4],
       pattern: [22, 38, 18, 44, 30, 25, 42, 19, 35, 28, 40, 20],
       audioUrl,
-      durationMs: trackType === 'drums' ? DRUM_LOOP_DURATION_MS : trackType === 'melody' ? 30000 : undefined,
+      durationMs: trackType === 'drums' ? drumDurationMs : trackType === 'melody' ? 30000 : undefined,
       drumLayers: trackType === 'drums' ? recordedLayers.map(layer => ({ ...layer, hits: [...layer.hits] })) : undefined,
     }
     const updatedTracks = [...projectTracks, newTrack]
@@ -1734,7 +1731,7 @@ export default function App() {
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
                         <span className="block text-sm font-bold">Beat layers</span>
-                        <span className="mt-0.5 block text-xs text-[#526f7d]">4 beat loop at 80 BPM · all layers play together</span>
+                        <span className="mt-0.5 block text-xs text-[#526f7d]">R starts and stops the take · loop length follows the recorded time · 80 BPM metronome</span>
                       </div>
                       <button type="button" onClick={toggleDrumLoop} disabled={!drumLayers.some(layer => layer.hits.length)} className={`focus-ring flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-40 ${isDrumLoopPlaying ? 'bg-[#fb9b6d] text-[#071c2b]' : 'bg-[#046492] text-white hover:bg-[#03577f]'}`}>
                         <Icon name={isDrumLoopPlaying ? 'pause' : 'play'} size={16}/>
