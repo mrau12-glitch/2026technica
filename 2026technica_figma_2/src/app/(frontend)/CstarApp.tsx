@@ -393,6 +393,7 @@ export default function App() {
   const isDrumCountInRef = useRef(false)
   const drumCountInTimerRef = useRef<number | null>(null)
   const drumRecordingOriginRef = useRef<number | null>(null)
+  const drumRecordingOriginAudioRef = useRef<number | null>(null)
   const drumPlaybackOriginRef = useRef<number | null>(null)
   const drumPlaybackOriginPerformanceRef = useRef<number | null>(null)
   const committedDrumLayerIdsRef = useRef<Set<number>>(new Set())
@@ -902,7 +903,7 @@ export default function App() {
     setDrumStatus(isDrumRecordingRef.current ? 'Playback paused. Recording continues.' : 'Playback paused.')
   }, [clearDrumLoopTimers, stopDrumMetronome])
 
-  const startDrumLoop = useCallback(() => {
+  const startDrumLoop = useCallback((alignedOrigin?: number) => {
     if (drumPlaybackOriginRef.current !== null) return
     clearDrumLoopTimers()
     if (!drumAudioContext || drumAudioContext.state === 'closed') {
@@ -922,13 +923,14 @@ export default function App() {
         context.state !== 'running'
       ) return
 
-      // Keep the loop entirely on the audio clock; wall-clock timer jitter must not shift hit times.
+      // Preserve the recording's loop phase so the first playback does not immediately replay the live audition.
       const audioOrigin = context.currentTime
       const performanceOrigin = window.performance.now()
-      const origin = audioOrigin + 0.06
+      const origin = alignedOrigin ?? audioOrigin + 0.06
       drumPlaybackOriginRef.current = origin
       drumPlaybackOriginPerformanceRef.current = performanceOrigin + (origin - audioOrigin) * 1000
       const loopDurationSeconds = DRUM_LOOP_DURATION_MS / 1000
+      const initialCycleNumber = Math.max(0, Math.floor((audioOrigin - origin) / loopDurationSeconds))
 
       const scheduleCycle = (cycleNumber: number) => {
         drumLoopCycleTimerRef.current = null
@@ -952,7 +954,7 @@ export default function App() {
         )
       }
 
-      scheduleCycle(0)
+      scheduleCycle(initialCycleNumber)
       setDrumStatus('Playback started. Completed layers are looping.')
     }
 
@@ -984,6 +986,7 @@ export default function App() {
     drumLayersRef.current = initialLayers
     activeDrumLayerIdRef.current = 1
     drumRecordingOriginRef.current = null
+    drumRecordingOriginAudioRef.current = null
     isDrumRecordingRef.current = false
     stopDrumMetronome()
     committedDrumLayerIdsRef.current.clear()
@@ -1115,9 +1118,12 @@ export default function App() {
       const hitCount = committedLayer?.hits.length || 0
       if (committedLayer) committedDrumLayerIdsRef.current.add(committedLayer.id)
       if (committedLayer?.id === 1 && hitCount > 0 && !playbackIsRunning) {
-        startDrumLoop()
+        const alignedOrigin = drumRecordingOriginAudioRef.current ?? undefined
+        drumRecordingOriginAudioRef.current = null
+        startDrumLoop(alignedOrigin)
         setDrumStatus(`${layerName} stopped and committed with ${hitCount} hits. Layer 1 playback started and is looping.`)
       } else {
+        drumRecordingOriginAudioRef.current = null
         setDrumStatus(`${layerName} stopped and committed with ${hitCount} hits.${playbackIsRunning ? ' Existing playback continues.' : ''}`)
       }
       return
@@ -1171,6 +1177,10 @@ export default function App() {
             ? drumPlaybackOriginPerformanceRef.current
             : window.performance.now()
         drumRecordingOriginRef.current = recordingOrigin
+        drumRecordingOriginAudioRef.current =
+          playbackIsRunning && drumPlaybackOriginRef.current !== null
+            ? drumPlaybackOriginRef.current
+            : drumAudioContext?.currentTime ?? null
         playCountInBeat(false, undefined, true)
         startDrumMetronome(recordingOrigin, false)
         isDrumRecordingRef.current = true
