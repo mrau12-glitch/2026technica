@@ -108,9 +108,7 @@ const starterTracks: Track[] = [
 ]
 
 const projects = [
-  { title: 'Morning Light', mood: 'Warm, peaceful and unhurried', tracks: 3, duration: '2:46', color: '#dceff7', updated: 'Edited today' },
-  { title: 'Rain on Glass', mood: 'Ambient textures and soft percussion', tracks: 5, duration: '4:12', color: '#dce5ef', updated: 'Edited yesterday' },
-  { title: 'City at Dusk', mood: 'Gentle pulse with electric piano', tracks: 4, duration: '3:28', color: '#ffe5d8', updated: 'Edited 4 days ago' },
+  { title: 'Untitled Project', mood: 'A blank space for your music', tracks: 0, duration: '0:00', color: '#dceff7', updated: 'New project' },
 ]
 
 const drumPads = [
@@ -229,17 +227,15 @@ function playDrumSound(id: string, scheduledAt?: number, isLoopPlayback = false)
 
 async function renderDrumLayersToWav(layers: DrumLayer[]) {
   const sampleRate = 44100
-  const durationSeconds = 30
+  const durationSeconds = DRUM_LOOP_DURATION_MS / 1000
   const frameCount = sampleRate * durationSeconds
   const offline = new OfflineAudioContext(2, frameCount, sampleRate)
   const noiseBuffers = new Map<string, AudioBuffer>()
-  const loopSeconds = DRUM_LOOP_DURATION_MS / 1000
-
   for (const layer of layers) {
     for (const hit of layer.hits) {
       const duration = hit.id === 'open_hi_hat' ? 0.42 : hit.id === 'shaker' ? 0.22 : hit.id === 'snare' ? 0.18 : 0.08
-      for (let cycleStart = 0; cycleStart < durationSeconds; cycleStart += loopSeconds) {
-        const at = cycleStart + hit.timeMs / 1000
+      {
+        const at = hit.timeMs / 1000
         if (at >= durationSeconds) continue
         const gain = offline.createGain()
         gain.connect(offline.destination)
@@ -328,8 +324,8 @@ export default function App() {
   const [authPassword, setAuthPassword] = useState('')
   const [authError, setAuthError] = useState('')
   const [page, setPage] = useState<'home' | 'project'>('home')
-  const [projectTitle, setProjectTitle] = useState('Morning Light')
-  const [projectTracks, setProjectTracks] = useState<Track[]>(starterTracks)
+  const [projectTitle, setProjectTitle] = useState('Untitled Project')
+  const [projectTracks, setProjectTracks] = useState<Track[]>([])
   const [activeTrack, setActiveTrack] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
   const [playheadMs, setPlayheadMs] = useState(0)
@@ -439,8 +435,7 @@ export default function App() {
     } else if (page === 'home') {
       narration = [
         'Music Projects.',
-        'Three project cards are arranged across the page.',
-        'From left to right.',
+        'One empty project is available.',
         ...projects.map(project => project.title),
       ]
     } else {
@@ -1127,8 +1122,12 @@ export default function App() {
 
   const openProject = (title: string) => {
     setProjectTitle(title)
-    setProjectTracks(starterTracks)
+    setProjectTracks([])
+    projectTracksRef.current = []
     setActiveTrack(0)
+    updatePlayhead(0)
+    audioRef.current?.pause()
+    setIsPlaying(false)
     setPage('project')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -1136,6 +1135,11 @@ export default function App() {
   const createProject = () => {
     setProjectTitle('Untitled Project')
     setProjectTracks([])
+    projectTracksRef.current = []
+    setActiveTrack(0)
+    updatePlayhead(0)
+    audioRef.current?.pause()
+    setIsPlaying(false)
     setPage('project')
   }
 
@@ -1192,7 +1196,7 @@ export default function App() {
       color: ['#8fcde8', '#b9d9e8', '#fb9b6d', '#c9e4f0'][projectTracks.length % 4],
       pattern: [22, 38, 18, 44, 30, 25, 42, 19, 35, 28, 40, 20],
       audioUrl,
-      durationMs: trackType === 'drums' || trackType === 'melody' ? 30000 : undefined,
+      durationMs: trackType === 'drums' ? DRUM_LOOP_DURATION_MS : trackType === 'melody' ? 30000 : undefined,
       drumLayers: trackType === 'drums' ? recordedLayers.map(layer => ({ ...layer, hits: [...layer.hits] })) : undefined,
     }
     setProjectTracks([...projectTracks, newTrack])
@@ -1331,13 +1335,13 @@ export default function App() {
             <button onClick={createProject} className="focus-ring flex h-12 items-center justify-center gap-2 rounded-xl bg-[#046492] px-5 font-bold text-white shadow-sm hover:bg-[#03577f]"><Icon name="plus" size={18}/> New music project</button>
           </div>
 
-          <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-10 grid max-w-md gap-5">
             {projects.map((project, index) => (
               <button key={project.title} onClick={() => openProject(project.title)} className="focus-ring group overflow-hidden rounded-[22px] border border-[#d9dfdc] bg-white text-left shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
                 <span className="wave-grid flex h-36 items-center justify-center gap-2 border-b border-[#d9dfdc] px-8" style={{ backgroundColor: project.color }}>
-                  {[24, 46, 31, 62, 40, 72, 48, 57, 34, 64, 42, 28].map((height, i) => <i key={i} className="w-1.5 rounded-full bg-[#075b83]/70" style={{ height: height - index * 4 }}/>) }
+                  {[24, 46, 31, 62, 40, 72, 48, 57, 34, 64, 42, 28].map((height, i) => <i key={i} className="w-1.5 rounded-full bg-[#075b83]/70" style={{ height }}/>) }
                 </span>
-                <span className="block p-5"><span className="flex items-start justify-between gap-3"><strong className="font-serif text-xl">{project.title}</strong><span className="rounded-full bg-[#e9f5fa] px-2.5 py-1 text-xs font-bold text-[#046492]">{project.tracks} tracks</span></span><span className="mt-2 block text-sm text-[#65726c]">{project.mood}</span><span className="mt-5 flex justify-between text-xs font-medium text-[#87918d]"><span>{project.updated}</span><span>{project.duration}</span></span></span>
+                <span className="block p-5"><span className="flex items-start justify-between gap-3"><strong className="font-serif text-xl">{project.title}</strong><span className="rounded-full bg-[#e9f5fa] px-2.5 py-1 text-xs font-bold text-[#046492]">Empty</span></span><span className="mt-2 block text-sm text-[#65726c]">{project.mood}</span><span className="mt-5 flex justify-between text-xs font-medium text-[#87918d]"><span>{project.updated}</span><span>{project.duration}</span></span></span>
               </button>
             ))}
           </div>
@@ -1394,7 +1398,7 @@ export default function App() {
                       <div className="daw-grid relative h-[92px] overflow-hidden" style={{ width: timelineWidthPx + 20 }}>
                         <div className={`relative ml-[10px] mt-2.5 flex h-[72px] items-center gap-1 overflow-hidden rounded-md border px-3 shadow-md ${activeTrack === index ? 'border-white/40' : 'border-black/30'}`} style={{ backgroundColor: track.color, width: `${Math.max(12, ((track.durationMs ?? timelineDurationMs) / 1000) * TIMELINE_PIXELS_PER_SECOND)}px` }}>
                           <span className="absolute left-2 top-1 text-[9px] font-bold text-[#164f69]/70">{track.name}{track.audioUrl ? ' · Audio' : ''}</span>
-                          {track.pattern.concat(track.pattern, track.pattern).map((height, i) => <i key={i} className="min-w-[2px] flex-1 rounded-full bg-[#125474]/60" style={{ height: Math.max(5, height - 8), maxWidth: 'none' }}/>)}
+                          {track.drumLayers?.length ? track.drumLayers.flatMap(layer => layer.hits).map((hit, hitIndex) => { const hitHeight = hit.id === 'kick' ? 36 : hit.id === 'snare' ? 29 : hit.id === 'open_hi_hat' ? 23 : 17; return <i key={`${layer.id}-${hitIndex}`} aria-hidden="true" className="absolute top-1/2 z-10 w-[3px] -translate-y-1/2 rounded-full bg-[#125474]/80" style={{ left: `${Math.min(98, (hit.timeMs / (track.durationMs ?? DRUM_LOOP_DURATION_MS)) * 100)}%`, height: hitHeight }} /> }) : track.pattern.concat(track.pattern, track.pattern).map((height, i) => <i key={i} className="min-w-[2px] flex-1 rounded-full bg-[#125474]/60" style={{ height: Math.max(5, height - 8), maxWidth: 'none' }}/>) }}
                         </div>
                       </div>
                     </div>
@@ -1528,7 +1532,7 @@ export default function App() {
         <span className={`grid h-9 w-9 place-items-center rounded-xl ${readStatus === 'reading' ? 'bg-[#fb9b6d] text-[#071c2b]' : 'bg-[#046492] text-white'}`}><Icon name={readStatus === 'reading' ? 'volume' : 'accessibility'} size={19}/></span>
         <span>{readStatus === 'loading' ? 'Preparing natural voice…' : readStatus === 'reading' ? `Reading with ${narrationSource === 'elevenlabs' ? 'ElevenLabs' : 'device voice'} — Space to stop` : 'Press Space to read this page'}</span>
       </button>
-      <audio ref={audioRef} src={projectTracks[activeTrack]?.audioUrl} onTimeUpdate={event => updatePlayhead(event.currentTarget.currentTime * 1000)} onEnded={event => { updatePlayhead(event.currentTarget.duration * 1000); setIsPlaying(false) }} className="hidden" />
+      <audio ref={audioRef} src={projectTracks[activeTrack]?.audioUrl} onTimeUpdate={event => updatePlayhead(event.currentTarget.currentTime * 1000)} onEnded={event => { const track = projectTracks[activeTrack]; if (isPlaying && track?.drumLayers?.length) { event.currentTarget.currentTime = 0; updatePlayhead(0); void event.currentTarget.play().catch(() => setIsPlaying(false)); return } updatePlayhead(event.currentTarget.duration * 1000); setIsPlaying(false) }} className="hidden" />
     </main>
   )
 }
