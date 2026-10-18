@@ -1784,7 +1784,7 @@ export default function App() {
                       )}
                     </div>
                   </div>
-                ) : (
+                ) : trackType === 'melody' ? (
                   <>
                     <label data-reader-section="Track description input" htmlFor="track-description" className="mt-4 block text-sm font-bold">{trackType === 'melody' ? 'Describe the melody' : 'Describe the vocal track'}</label>
                     {trackType === 'melody' && <p id="melody-prompt-help" className="mt-1 text-xs leading-5 text-[#526f7d]">Include the instrument, how the melody should move, and the mood.</p>}
