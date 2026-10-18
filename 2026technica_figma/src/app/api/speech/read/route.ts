@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Invalid request body.' }, { status: 400 })
   }
 
-  const text = typeof input.text === 'string' ? input.text.replace(/\\s+/g, ' ').trim() : ''
+  const text = typeof input.text === 'string' ? input.text.replace(/\s+/g, ' ').trim() : ''
   if (!text || text.length > 5000) {
     return Response.json({ error: 'Narration text must contain between 1 and 5,000 characters.' }, { status: 400 })
   }
