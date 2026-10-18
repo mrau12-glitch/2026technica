@@ -8,7 +8,7 @@
   const bass = new Audio("/sounds/bass.mp3");
   const shaker = new Audio("/sounds/shaker.mp3");
 
-  drums=[closed_hi_hat, kick, snare, low_tom, open_hi_hat, high_tom, bass, shaker]
+  const drums={closed_hi_hat, kick, snare, low_tom, open_hi_hat, high_tom, bass, shaker};
   Object.values(drums).forEach(audio => {
     audio.preload = "auto";
     audio.load();
@@ -17,6 +17,7 @@
   let tracks = [
     { notes: [], loopIntervalId: null, loopTimeoutIds: [] }
   ];
+  
   let activeTrackIndex = 0;
   const loopDuration = 4000;
   let isPlaying = true; 
@@ -44,28 +45,29 @@
       const firstNoteTime = track.notes[0].time;
       const lastNoteTime = track.notes[track.notes.length - 1].time;
       const dynamicDuration = Math.max(loopDuration, (lastNoteTime - firstNoteTime) + 500);
-  }
-      function playNote(drumName) {
-        const original = drums[drumName];
-        if (!original) return;
-
-        const sound = original.cloneNode();
-        sound.play().catch(console.error);
-      }
 
       function scheduleNotes() {
-          track.notes.forEach(hit => {
-              const delay = hit.time - firstNoteTime;
-              const tId = setTimeout(() => playNote(hit.drum), delay);
-              track.loopTimeoutIds.push(tId);
-          });
+        track.notes.forEach(hit => {
+          const delay = hit.time - firstNoteTime;
+          const tId = setTimeout(() => playNote(hit.drum), delay);
+          track.loopTimeoutIds.push(tId);
+        });
       }
+  }
+  
+  function playNote(drumName) {
+      const original = drums[drumName];
+      if (!original) return;
 
-      scheduleNotes();
+      const sound = original.cloneNode();
+      sound.play().catch(console.error);
+  }
+
+  scheduleNotes();
       track.loopIntervalId = setInterval(() => {
-          track.loopTimeoutIds.forEach(id => clearTimeout(id));
-          track.loopTimeoutIds = [];
-          scheduleNotes();
+        track.loopTimeoutIds.forEach(id => clearTimeout(id));
+        track.loopTimeoutIds = [];
+        scheduleNotes();
       }, dynamicDuration);
 
   // Refreshes playback for all tracks simultaneously (used for play/pause toggles)
