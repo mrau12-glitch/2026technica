@@ -119,10 +119,44 @@
           stopAllTrackPlayback();
       }
   }
+
+  function saveComposition() {
+      // Check if there are any notes recorded across any layer
+      const totalNotesCount = tracks.reduce((acc, t) => acc + t.notes.length, 0);
+      if (totalNotesCount === 0) {
+          console.log("Nothing to save! Play some notes first.");
+          return;
+      }
+    const dataToSave = tracks.map(track => ({
+          notes: track.notes
+      }));
+    const jsonString = JSON.stringify(dataToSave, null, 2);
+      const blob = new Blob([jsonString], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+      a.href = url;
+      a.download = "drum_composition.json";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      console.log("Composition saved and downloaded successfully!");
+  }
   
 document.addEventListener("keydown", (event) => {
   if (event.repeat) return;
 
+  if (event.shiftKey && event.code === 'KeyS') {
+    event.preventDefault();
+    saveComposition();
+    return; // Exit the listener early so it doesn't trigger the standard 'KeyS' kick drum
+  }
+
+  if (event.code === 'KeyG'){
+    event.preventDefault();
+    togglePlayPause();
+  }
+  
   if (event.code === 'KeyG'){
     event.preventDefault();
     togglePlayPause();
