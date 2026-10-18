@@ -15,7 +15,7 @@ The name, Cstar, comes from Seastar, an ocean animal that use their hands more t
 
 ## Why we started
 
-As music lovers, we could not imagine one day without music. The questions of how we could bring the same music experience to disable population is always in our hearts. Being a user ourselves for many music tools, we soon realized that most of them communicate important information visually. That can make it difficult for blind and low-vision musicians to understand where they are, what is available, and what will happen when they act.
+As music lovers, we could not imagine one day without music. The questions of how we could bring the same music experience to the disabled population is always in our hearts. Being a user ourselves for many music tools, we soon realized that most of them communicate important information visually. That can make it difficult for blind and low-vision musicians to understand where they are, what is available, and what will happen when they act.
 
 We started Cstar to explore a different approach. No cold, mechanical voice to read the page. Instead, users can hear guidance in a more natural voice powered by ElevenLabs. But our hope reaches beyond the sound of that voice, making music without sight should not feel like facing a screen alone. It should feel like a late-night talk with someone who understands your love of music. Warm, patient, and ready to help you turn an idea into a song.
 
