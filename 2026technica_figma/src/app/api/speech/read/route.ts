@@ -1,8 +1,12 @@
-const ELEVEN_TTS_URL =
-  'https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM?output_format=mp3_44100_128'
+const DEFAULT_VOICE_ID = '21m00Tcm4TlvDq8ikWAM'
 
 type SpeechRequest = {
   text?: unknown
+}
+
+function setting(name: string, fallback: number) {
+  const value = Number(process.env[name])
+  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : fallback
 }
 
 export async function POST(request: Request) {
@@ -23,29 +27,41 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Narration text must contain between 1 and 5,000 characters.' }, { status: 400 })
   }
 
-  const elevenResponse = await fetch(ELEVEN_TTS_URL, {
-    method: 'POST',
-    headers: {
-      Accept: 'audio/mpeg',
-      'Content-Type': 'application/json',
-      'xi-api-key': apiKey,
-    },
-    body: JSON.stringify({
-      text,
-      model_id: 'eleven_multilingual_v2',
-      voice_settings: {
-        stability: 0.42,
-        similarity_boost: 0.82,
-        style: 0.35,
-        use_speaker_boost: true,
+  const voiceId = process.env.ELEVENLABS_VOICE_ID?.trim() || DEFAULT_VOICE_ID
+  const outputFormat = process.env.ELEVENLABS_OUTPUT_FORMAT?.trim() || 'mp3_44100_128'
+  const voiceUrl = new URL(
+    `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`,
+  )
+  voiceUrl.searchParams.set('output_format', outputFormat)
+
+  let elevenResponse: Response
+  try {
+    elevenResponse = await fetch(voiceUrl, {
+      method: 'POST',
+      headers: {
+        Accept: 'audio/mpeg',
+        'Content-Type': 'application/json',
+        'xi-api-key': apiKey,
       },
-    }),
-    signal: AbortSignal.timeout(120000),
-  })
+      body: JSON.stringify({
+        text,
+        model_id: process.env.ELEVENLABS_MODEL_ID?.trim() || 'eleven_multilingual_v2',
+        voice_settings: {
+          stability: setting('ELEVENLABS_STABILITY', 0.42),
+          similarity_boost: setting('ELEVENLABS_SIMILARITY_BOOST', 0.82),
+          style: setting('ELEVENLABS_STYLE', 0.35),
+          use_speaker_boost: process.env.ELEVENLABS_USE_SPEAKER_BOOST !== 'false',
+        },
+      }),
+      signal: AbortSignal.timeout(120000),
+    })
+  } catch {
+    return Response.json({ error: 'Could not connect to ElevenLabs. Please try again.' }, { status: 502 })
+  }
 
   if (!elevenResponse.ok) {
-    const details = await elevenResponse.text()
-    console.error('ElevenLabs narration request failed', elevenResponse.status, details.slice(0, 500))
+    // Log status only; never log the visitor's page text or API response body.
+    console.error('ElevenLabs narration request failed', elevenResponse.status)
     const message =
       elevenResponse.status === 401
         ? 'ElevenLabs rejected the API key.'
