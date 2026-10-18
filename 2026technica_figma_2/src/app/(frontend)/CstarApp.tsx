@@ -1393,7 +1393,28 @@ export default function App() {
                       <div className="daw-grid relative h-[92px] overflow-hidden" style={{ width: timelineWidthPx + 20 }}>
                         <div className={`relative ml-[10px] mt-2.5 flex h-[72px] items-center gap-1 overflow-hidden rounded-md border px-3 shadow-md ${activeTrack === index ? 'border-white/40' : 'border-black/30'}`} style={{ backgroundColor: track.color, width: `${Math.max(12, ((track.durationMs ?? timelineDurationMs) / 1000) * TIMELINE_PIXELS_PER_SECOND)}px` }}>
                           <span className="absolute left-2 top-1 text-[9px] font-bold text-[#164f69]/70">{track.name}{track.audioUrl ? ' · Audio' : ''}</span>
-                          {track.drumLayers?.length ? track.drumLayers.flatMap(layer => layer.hits).map((hit, hitIndex) => { const hitHeight = hit.id === 'kick' ? 36 : hit.id === 'snare' ? 29 : hit.id === 'open_hi_hat' ? 23 : 17; return <i key={`${layer.id}-${hitIndex}`} aria-hidden="true" className="absolute top-1/2 z-10 w-[3px] -translate-y-1/2 rounded-full bg-[#125474]/80" style={{ left: `${Math.min(98, (hit.timeMs / (track.durationMs ?? DRUM_LOOP_DURATION_MS)) * 100)}%`, height: hitHeight }} /> }) : track.pattern.concat(track.pattern, track.pattern).map((height, i) => <i key={i} className="min-w-[2px] flex-1 rounded-full bg-[#125474]/60" style={{ height: Math.max(5, height - 8), maxWidth: 'none' }}/>) }}
+                          {track.drumLayers?.length
+                            ? track.drumLayers.flatMap(layer => layer.hits).map((hit, hitIndex) => {
+                                const hitHeight = hit.id === 'kick' ? 36 : hit.id === 'snare' ? 29 : hit.id === 'open_hi_hat' ? 23 : 17
+                                return (
+                                  <i
+                                    key={`${layer.id}-${hitIndex}`}
+                                    aria-hidden="true"
+                                    className="absolute top-1/2 z-10 w-[3px] -translate-y-1/2 rounded-full bg-[#125474]/80"
+                                    style={{
+                                      left: `${Math.min(98, (hit.timeMs / (track.durationMs ?? DRUM_LOOP_DURATION_MS)) * 100)}%`,
+                                      height: hitHeight,
+                                    }}
+                                  />
+                                )
+                              })
+                            : track.pattern.concat(track.pattern, track.pattern).map((height, i) => (
+                                <i
+                                  key={i}
+                                  className="min-w-[2px] flex-1 rounded-full bg-[#125474]/60"
+                                  style={{ height: Math.max(5, height - 8), maxWidth: 'none' }}
+                                />
+                              ))}
                         </div>
                       </div>
                     </div>
