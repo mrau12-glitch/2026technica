@@ -16,6 +16,7 @@ type IconName =
   | 'skipBack'
   | 'skipForward'
   | 'sparkles'
+  | 'trash'
   | 'volume'
 
 function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
@@ -32,6 +33,7 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
     skipBack: <><path d="M6 5v14M18 6l-8 6 8 6V6Z"/></>,
     skipForward: <><path d="M18 5v14M6 6l8 6-8 6V6Z"/></>,
     sparkles: <><path d="m12 3 1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2L12 3ZM5 14l.8 2.2L8 17l-2.2.8L5 20l-.8-2.2L2 17l2.2-.8L5 14ZM19 13l.7 2.3 2.3.7-2.3.7L19 19l-.7-2.3L16 16l2.3-.7L19 13Z"/></>,
+    trash: <><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5"/></>,
     volume: <><path d="M5 9v6h4l5 4V5L9 9H5Z"/><path d="M17 9a4 4 0 0 1 0 6M19.5 6.5a8 8 0 0 1 0 11"/></>,
   }
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>
@@ -467,7 +469,7 @@ export default function App() {
       narration = [
         'Project ' + projectTitle + '. From top to bottom: project controls, playback controls, timeline ruler, then tracks.',
         ...trackSummary,
-        'Press J to play or pause all tracks. Press A to add a track.',
+        'Press J to play or pause all tracks. Press A to add a track. Press D to delete the selected track.',
       ]
     }
     const pointerPosition = currentMousePositionRef.current
@@ -1302,6 +1304,27 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  const deleteTrack = (index: number) => {
+    const track = projectTracks[index]
+    if (!track) return
+    projectAudioRefs.current.forEach(audio => audio.pause())
+    audioRef.current?.pause()
+    setIsPlaying(false)
+    if (track.audioUrl?.startsWith('blob:')) URL.revokeObjectURL(track.audioUrl)
+    const updatedTracks = projectTracks.filter((_, trackIndex) => trackIndex !== index)
+    projectTracksRef.current = updatedTracks
+    setProjectTracks(updatedTracks)
+    const nextActiveTrack = updatedTracks.length === 0
+      ? 0
+      : index < activeTrack
+        ? activeTrack - 1
+        : index === activeTrack
+          ? Math.min(index, updatedTracks.length - 1)
+          : activeTrack
+    setActiveTrack(nextActiveTrack)
+    updatePlayhead(0)
+  }
+
   const createProject = () => {
     setProjectTitle('Untitled Project')
     setProjectTracks([])
@@ -1456,6 +1479,11 @@ export default function App() {
         openDescribe()
         return
       }
+      if (key === 'd') {
+        event.preventDefault()
+        deleteTrack(activeTrack)
+        return
+      }
       if (key !== 'j') return
       event.preventDefault()
       if (isPlaying) togglePlayback()
@@ -1463,7 +1491,7 @@ export default function App() {
     }
     window.addEventListener('keydown', handleProjectPlaybackShortcut)
     return () => window.removeEventListener('keydown', handleProjectPlaybackShortcut)
-  }, [isPlaying, openDescribe, page, showDescribe, startProjectPlayback, togglePlayback])
+  }, [activeTrack, deleteTrack, isPlaying, openDescribe, page, showDescribe, startProjectPlayback, togglePlayback])
 
   const timelineDurationMs = Math.max(
     DEFAULT_TRACK_DURATION_MS,
@@ -1633,7 +1661,7 @@ export default function App() {
                     <div key={`${track.name}-${index}`} data-reader-section={`Track ${index + 1}: ${track.name}`} onClick={() => { projectAudioRefs.current.forEach(audio => audio.pause()); audioRef.current?.pause(); setIsPlaying(false); setActiveTrack(index); updatePlayhead(0) }} className={`grid border-b border-black/50 transition ${activeTrack === index ? 'bg-[#293f49]' : 'bg-[#263840] hover:bg-[#353a37]'}`} style={{ gridTemplateColumns: `230px ${timelineWidthPx + 20}px` }}>
                       <div className="flex h-[92px] items-center gap-3 border-r border-black/60 px-3">
                         <div className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-[#123f54] shadow-inner" style={{ background: track.color }}><Icon name={index === 0 ? 'play' : 'volume'} size={19}/></div>
-                        <div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><strong className="truncate text-sm text-white">{track.name}</strong><span className="text-[10px] text-[#89a8b5]">{index + 1}</span></div><p className="mt-1 truncate text-[11px] text-[#9db2bc]">{track.desc}</p><div className="mt-2 flex items-center gap-1.5"><span className="grid h-5 w-5 place-items-center rounded bg-[#17272f] text-[9px] font-bold text-[#b9d0da]">M</span><span className="grid h-5 w-5 place-items-center rounded bg-[#17272f] text-[9px] font-bold text-[#b9d0da]">S</span><span className="ml-1 h-1 flex-1 rounded-full bg-[#102630]"><i className="block h-full w-3/5 rounded-full bg-[#79aabd]"/></span></div></div>
+                        <div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><strong className="truncate text-sm text-white">{track.name}</strong><span className="text-[10px] text-[#89a8b5]">{index + 1}</span></div><p className="mt-1 truncate text-[11px] text-[#9db2bc]">{track.desc}</p><div className="mt-2 flex items-center gap-1.5"><span className="grid h-5 w-5 place-items-center rounded bg-[#17272f] text-[9px] font-bold text-[#b9d0da]">M</span><button type="button" aria-label={`Delete ${track.name}`} title="Delete track" onClick={event => { event.stopPropagation(); deleteTrack(index) }} className="focus-ring grid h-6 w-6 shrink-0 place-items-center rounded bg-[#17272f] text-[#f3a08b] hover:bg-[#533a38]"><Icon name="trash" size={14}/></button><span className="ml-1 h-1 flex-1 rounded-full bg-[#102630]"><i className="block h-full w-3/5 rounded-full bg-[#79aabd]"/></span></div></div>
                       </div>
                       <div className="daw-grid relative h-[92px] overflow-hidden" style={{ width: timelineWidthPx + 20 }}>
                         <div className={`relative ml-[10px] mt-2.5 flex h-[72px] items-center gap-1 overflow-hidden rounded-md border px-3 shadow-md ${activeTrack === index ? 'border-white/40' : 'border-black/30'}`} style={{ backgroundColor: track.color, width: `${Math.max(12, ((track.durationMs ?? timelineDurationMs) / 1000) * TIMELINE_PIXELS_PER_SECOND)}px` }}>
