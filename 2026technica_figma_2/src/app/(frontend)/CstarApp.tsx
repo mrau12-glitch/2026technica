@@ -347,6 +347,8 @@ export default function App() {
   const [audioTrackStatus, setAudioTrackStatus] = useState('')
   const [showDescribe, setShowDescribe] = useState(false)
   const [isListening, setIsListening] = useState(false)
+  const [isMelodyDictating, setIsMelodyDictating] = useState(false)
+  const [melodyDictationStatus, setMelodyDictationStatus] = useState('')
   const [description, setDescription] = useState('')
   const [trackType, setTrackType] = useState<'drums' | 'melody' | 'vocals' | null>(null)
   const [isRecording, setIsRecording] = useState(false)
@@ -370,6 +372,7 @@ export default function App() {
   const timelineCanvasRef = useRef<HTMLDivElement>(null)
   const audioFileInputRef = useRef<HTMLInputElement>(null)
   const audioRecorderRef = useRef<MediaRecorder | null>(null)
+  const melodySpeechRecognitionRef = useRef<any>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const audioRecordingStartedAtRef = useRef<number | null>(null)
   const audioRecordingTimerRef = useRef<number | null>(null)
@@ -441,8 +444,8 @@ export default function App() {
       } else {
         narration = trackType === 'melody'
           ? [
-              'Melodic Instrument. Describe the instrument, melody, and mood in one field.',
-              generationError || 'Press Generate with Eleven Music or Shift plus S. The generated melody will be added to the project.',
+              'Melodic Instrument. Describe the instrument, melody, and mood in one field. Use Dictate description to speak the prompt. Press R to record a sound; the recording is added as an audio track.',
+              generationError || 'Press Generate with Eleven Music or Shift plus S to create a melody from the text description.',
             ]
           : [
               'Vocals editor. From top to bottom: description, reference recording, dictation, and add vocal track.',
@@ -1010,6 +1013,12 @@ export default function App() {
   }
 
   const closeDescribe = () => {
+    if (melodySpeechRecognitionRef.current) {
+      melodySpeechRecognitionRef.current.stop()
+      melodySpeechRecognitionRef.current = null
+    }
+    setIsMelodyDictating(false)
+    if (trackType === 'melody' && isAudioRecording) stopAudioRecording()
     stopDrumLoop()
     if (drumCountInTimerRef.current !== null) window.clearTimeout(drumCountInTimerRef.current)
     drumCountInTimerRef.current = null
@@ -1209,11 +1218,18 @@ export default function App() {
   }, [startDrumLoop, stopDrumMetronome])
 
   useEffect(() => {
-    if (!showDescribe || trackType !== 'drums') return
+    if (!showDescribe || (trackType !== 'drums' && trackType !== 'melody')) return
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.repeat) return
       const target = event.target as HTMLElement | null
       if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      if (event.key.toLowerCase() === 'r' && trackType === 'melody') {
+        event.preventDefault()
+        if (isAudioRecording) stopAudioRecording()
+        else void startAudioRecording()
+        return
+      }
+      if (trackType !== 'drums') return
       if (event.key.toLowerCase() === 'g') {
         event.preventDefault()
         toggleDrumLoop()
@@ -1240,7 +1256,7 @@ export default function App() {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [addDrumLayer, showDescribe, toggleDrumLoop, toggleDrumRecording, trackType, triggerDrum])
+  }, [addDrumLayer, isAudioRecording, showDescribe, startAudioRecording, stopAudioRecording, toggleDrumLoop, toggleDrumRecording, trackType, triggerDrum])
 
   useEffect(() => {
     if (!showDescribe || trackType !== 'drums') {
@@ -1776,6 +1792,56 @@ export default function App() {
                     <label data-reader-section="Track description input" htmlFor="track-description" className="mt-4 block text-sm font-bold">{trackType === 'melody' ? 'Describe the melody' : 'Describe the vocal track'}</label>
                     {trackType === 'melody' && <p id="melody-prompt-help" className="mt-1 text-xs leading-5 text-[#526f7d]">Include the instrument, how the melody should move, and the mood.</p>}
                     <textarea autoFocus id="track-description" value={description} maxLength={2000} aria-describedby={trackType === 'melody' ? 'melody-prompt-help' : undefined} onChange={(e) => setDescription(e.target.value)} placeholder={trackType === 'melody' ? 'For example: A gentle piano melody that slowly rises, with a warm and hopeful mood...' : 'For example: A quiet wordless vocal harmony with a breathy tone...'} className="focus-ring mt-2 min-h-28 w-full resize-none rounded-2xl border border-[#cbd4d0] bg-[#fbfcfb] p-4 text-[15px] leading-7 outline-none focus:border-[#046492]"/>
+                    {trackType === 'melody' && (
+                      <>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button type="button" data-reader-section="Dictate melody description" aria-pressed={isMelodyDictating} onClick={() => {
+                            if (isMelodyDictating) {
+                              melodySpeechRecognitionRef.current?.stop()
+                              return
+                            }
+                            const speechWindow = window as any
+                            const Recognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition
+                            if (!Recognition) {
+                              setMelodyDictationStatus('Speech input is not supported in this browser. You can type the description instead.')
+                              return
+                            }
+                            const recognition = new Recognition()
+                            melodySpeechRecognitionRef.current = recognition
+                            recognition.lang = navigator.language || 'en-US'
+                            recognition.continuous = false
+                            recognition.interimResults = false
+                            recognition.onresult = (event: any) => {
+                              const transcript = Array.from(event.results as any[]).map((result: any) => result[0]?.transcript || '').join(' ').trim()
+                              if (transcript) setDescription(current => `${current.trim()}${current.trim() ? ' ' : ''}${transcript}`)
+                            }
+                            recognition.onerror = (event: any) => {
+                              setMelodyDictationStatus(event.error === 'not-allowed' ? 'Microphone permission was denied.' : 'Could not recognize speech. Please try again or type the description.')
+                            }
+                            recognition.onend = () => {
+                              melodySpeechRecognitionRef.current = null
+                              setIsMelodyDictating(false)
+                              setMelodyDictationStatus(current => current || 'Speech input finished. The recognized words were added to the description.')
+                            }
+                            setMelodyDictationStatus('Listening. Speak your instrument, melody, and mood description.')
+                            setIsMelodyDictating(true)
+                            try {
+                              recognition.start()
+                            } catch {
+                              melodySpeechRecognitionRef.current = null
+                              setIsMelodyDictating(false)
+                              setMelodyDictationStatus('Could not start speech input. Check microphone permission and try again.')
+                            }
+                          }} className={`focus-ring flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-bold ${isMelodyDictating ? 'bg-[#fb9b6d] text-[#17272f]' : 'bg-[#e8f4f8] text-[#075b83] hover:bg-[#d9edf5]'}`}>
+                            <Icon name={isMelodyDictating ? 'pause' : 'mic'} size={16}/>{isMelodyDictating ? 'Stop dictation' : 'Dictate description'}
+                          </button>
+                          <button type="button" data-reader-section="Record melody audio" aria-pressed={isAudioRecording} onClick={() => isAudioRecording ? stopAudioRecording() : void startAudioRecording()} className={`focus-ring flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-bold ${isAudioRecording ? 'bg-[#fb9b6d] text-[#17272f]' : 'bg-[#e8f4f8] text-[#075b83] hover:bg-[#d9edf5]'}`}>
+                            <Icon name={isAudioRecording ? 'pause' : 'mic'} size={16}/>{isAudioRecording ? `Stop recording ${formatTimelineTime(audioRecordingMs)}` : 'Record sound'} <kbd className="rounded border border-current/40 px-1.5 py-0.5 font-mono text-[10px]">R</kbd>
+                          </button>
+                        </div>
+                        <p className="mt-2 text-xs leading-5 text-[#526f7d]" aria-live="polite" aria-atomic="true">{melodyDictationStatus || (isAudioRecording ? 'Recording. Press R again to stop and add it to the project as an audio track.' : 'Dictation fills the description. R records a separate audio track in the project.')}</p>
+                      </>
+                    )}
                   </>
                 )}
 
