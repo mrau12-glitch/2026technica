@@ -450,7 +450,7 @@ export default function App() {
       } else {
         narration = trackType === 'melody'
           ? [
-              'Melodic Instrument. Describe the instrument, melody, and mood in one field. Use Dictate description to speak the prompt. Press R to record a sound; the recording is added as an audio track.',
+              'Melodic Instrument. Describe the instrument, melody, and mood in one field. Use Dictate description to speak the prompt. Press R or choose Dictate description to speak the English prompt.',
               generationError || 'Press Generate with Eleven Music or Shift plus S to create a melody from the text description.',
             ]
           : [
@@ -1709,7 +1709,7 @@ export default function App() {
             </div>
 
             {!trackType ? (
-              <div className="mt-7 grid gap-3 sm:grid-cols-2">
+              <div className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {[
                   { id: 'drums' as const, title: 'Drums', detail: 'Beats, percussion and rhythm', icon: 'volume' as const, color: '#f3d4bf' },
                   { id: 'melody' as const, title: 'Melodic Instrument', detail: 'Piano, strings, guitar and more', icon: 'sparkles' as const, color: '#cfe8f3' },
@@ -1877,7 +1877,9 @@ export default function App() {
                     </button>
                     <p className="mt-2 text-xs leading-5 text-[#526f7d]" aria-live="polite" aria-atomic="true">{audioTrackStatus || 'Microphone audio will be saved as a new track when recording stops.'}</p>
                   </section>
-                )}                {generationError && <p role="alert" className="mt-4 rounded-xl bg-[#fff0ed] px-4 py-3 text-sm font-medium text-[#8f382f]">{generationError}</p>}
+                )}
+
+                {generationError && <p role="alert" className="mt-4 rounded-xl bg-[#fff0ed] px-4 py-3 text-sm font-medium text-[#8f382f]">{generationError}</p>}
                 <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button onClick={closeDescribe} disabled={isGenerating} className="focus-ring rounded-xl px-5 py-3 font-bold text-[#526f7d] hover:bg-[#eef7fb] disabled:cursor-not-allowed disabled:opacity-50">{trackType === 'vocals' ? 'Done' : 'Cancel'}</button>{trackType !== 'vocals' && <button onClick={addTrack} disabled={isGenerating} className="focus-ring flex min-w-40 items-center justify-center gap-2 rounded-xl bg-[#046492] px-5 py-3 font-bold text-white hover:bg-[#03577f] disabled:cursor-wait disabled:opacity-70"><Icon name={trackType === 'drums' ? 'save' : 'sparkles'} size={18}/>{isGenerating ? (trackType === 'drums' ? 'Rendering…' : 'Generating…') : trackType === 'vocals' ? 'Add vocal track' : trackType === 'drums' ? 'Save Drum Track' : 'Generate with Eleven Music'}{!isGenerating && <kbd className="ml-1 rounded border border-white/40 px-1.5 py-0.5 font-mono text-[10px]">Shift+S</kbd>}</button>}</div>
               </>
             )}
