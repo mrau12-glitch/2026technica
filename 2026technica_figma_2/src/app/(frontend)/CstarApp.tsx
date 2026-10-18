@@ -172,7 +172,13 @@ function playDrumSound(id: string, scheduledAt?: number, isLoopPlayback = false)
     drumAudioContext = new AudioContextClass()
   }
   const context = drumAudioContext
-  if (context.state === 'suspended') void context.resume()
+  if (context.state === 'suspended') {
+    if (scheduledAt !== undefined) return
+    void context.resume().then(() => {
+      if (drumAudioContext === context && context.state === 'running') playDrumSound(id, undefined, isLoopPlayback)
+    })
+    return
+  }
   const now = scheduledAt ?? context.currentTime
   const gain = context.createGain()
   gain.connect(context.destination)
@@ -522,43 +528,67 @@ export default function App() {
   }, [clearDrumLoopTimers, stopDrumMetronome])
 
   const startDrumLoop = useCallback(() => {
-    if (drumLoopCycleTimerRef.current !== null) return
+    if (drumPlaybackOriginRef.current !== null) return
     clearDrumLoopTimers()
     if (!drumAudioContext || drumAudioContext.state === 'closed') {
       drumAudioContext = new window.AudioContext()
     }
-    if (drumAudioContext.state === 'suspended') void drumAudioContext.resume()
 
-    const origin = window.performance.now() + 60
-    drumPlaybackOriginRef.current = origin
-    const scheduleCycle = (cycleNumber: number) => {
-      drumLoopCycleTimerRef.current = null
-      const context = drumAudioContext
-      if (!context || context.state === 'closed' || drumPlaybackOriginRef.current === null) return
+    const context = drumAudioContext
+    // Reserve the loop while AudioContext resumes so repeated start events cannot create two schedulers.
+    drumPlaybackOriginRef.current = -1
+    setIsDrumLoopPlaying(true)
+    setDrumStatus('Playback starting.')
 
-      const cycleStart = origin + cycleNumber * DRUM_LOOP_DURATION_MS
-      const now = window.performance.now()
-      const audioNow = context.currentTime
-      const hits = drumLayersRef.current.flatMap(layer => layer.hits)
-      for (const hit of hits) {
-        const eventTime = cycleStart + hit.timeMs
-        const delay = eventTime - now
-        // Ignore events the browser missed while busy; playing them late would create a burst.
-        if (delay < -15) continue
-        const audioTime = audioNow + Math.max(0, delay) / 1000
-        playDrumSound(hit.id, audioTime, true)
+    const beginPlayback = () => {
+      if (
+        drumPlaybackOriginRef.current !== -1 ||
+        drumAudioContext !== context ||
+        context.state !== 'running'
+      ) return
+
+      // Keep the loop entirely on the audio clock; wall-clock timer jitter must not shift hit times.
+      const origin = context.currentTime + 0.06
+      drumPlaybackOriginRef.current = origin
+      const loopDurationSeconds = DRUM_LOOP_DURATION_MS / 1000
+
+      const scheduleCycle = (cycleNumber: number) => {
+        drumLoopCycleTimerRef.current = null
+        if (drumPlaybackOriginRef.current !== origin || context.state !== 'running') return
+
+        const cycleStart = origin + cycleNumber * loopDurationSeconds
+        const audioNow = context.currentTime
+        const hits = drumLayersRef.current.flatMap(layer => layer.hits)
+        for (const hit of hits) {
+          const eventTime = cycleStart + hit.timeMs / 1000
+          const delay = eventTime - audioNow
+          // Skip stale events instead of playing them together after the browser stalls.
+          if (delay < -0.015) continue
+          playDrumSound(hit.id, Math.max(audioNow, eventTime), true)
+        }
+
+        const nextCycleStart = origin + (cycleNumber + 1) * loopDurationSeconds
+        drumLoopCycleTimerRef.current = window.setTimeout(
+          () => scheduleCycle(cycleNumber + 1),
+          Math.max(0, (nextCycleStart - 0.1 - context.currentTime) * 1000),
+        )
       }
 
-      const nextCycleStart = origin + (cycleNumber + 1) * DRUM_LOOP_DURATION_MS
-      drumLoopCycleTimerRef.current = window.setTimeout(
-        () => scheduleCycle(cycleNumber + 1),
-        Math.max(0, nextCycleStart - 100 - window.performance.now()),
-      )
+      scheduleCycle(0)
+      setDrumStatus('Playback started. Completed layers are looping.')
     }
 
-    setIsDrumLoopPlaying(true)
-    scheduleCycle(0)
-    setDrumStatus('Playback started. Completed layers are looping.')
+    if (context.state === 'suspended') {
+      void context.resume().then(beginPlayback).catch(() => {
+        if (drumPlaybackOriginRef.current === -1) {
+          drumPlaybackOriginRef.current = null
+          setIsDrumLoopPlaying(false)
+          setDrumStatus('Audio could not start. Press G to try again.')
+        }
+      })
+    } else {
+      beginPlayback()
+    }
   }, [clearDrumLoopTimers])
 
   const toggleDrumLoop = useCallback(() => {
