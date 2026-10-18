@@ -1150,7 +1150,7 @@ export default function App() {
       if (hitCount > 0) {
         if (playbackIsRunning) stopDrumLoop()
         startDrumLoop()
-        setDrumStatus(`${layerName} stopped and committed with ${hitCount} hits. This ${formatTimelineTime(takeDurationMs)} take now loops at its recorded length.`)
+        setDrumStatus(`${layerName} stopped and committed with ${hitCount} hits. This ${Math.round(takeDurationMs/1000} second take now loops at its recorded length.`)
       } else {
         setDrumStatus(`${layerName} stopped with no hits. Press R to record again.`)
       }
