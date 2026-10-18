@@ -8,50 +8,37 @@
   const bass = new Audio("/sounds/bass.mp3");
   const shaker = new Audio("/sounds/shaker.mp3");
 
-  let currentTrack = [];
-  let loopTimeoutIds = [];
-  let loopIntervalId = null;
+  let tracks = [
+    { notes: [], loopIntervalId: null, loopTimeoutIds: [] }
+  ];
+  let activeTrackIndex = 0;
   const loopDuration = 4000;
-
-  // --- ADDED STATE TRACKER ---
   let isPlaying = true; 
 
-  // --- ADDED FUNCTION TO STOP THE LOOP TIMERS ---
-  function stopLoopPlayback() {
-      loopTimeoutIds.forEach(id => clearTimeout(id));
-      loopTimeoutIds = [];
-      if (loopIntervalId) clearInterval(loopIntervalId);
+  // Completely silences all active loops across all tracks
+  function stopAllTrackPlayback() {
+      tracks.forEach(track => {
+          track.loopTimeoutIds.forEach(id => clearTimeout(id));
+          track.loopTimeoutIds = [];
+          if (track.loopIntervalId) clearInterval(track.loopIntervalId);
+      });
   }
-  
-function addToTrack(drumName) {
-    const hit = {
-        drum: drumName,
-        time: audioContext.currentTime
-    };
 
-    currentTrack.push(hit);
-
-    console.log("Added to track:", hit);
-}
-
- function startLoopPlayback() {
-      // Clear any existing active playback loops/timeouts
-      stopLoopPlayback();
-      if (!isPlaying || currentTrack.length === 0) return;
-      loopTimeoutIds.forEach(id => clearTimeout(id));
-      loopTimeoutIds = [];
-      if (loopIntervalId) clearInterval(loopIntervalId);
-
-      if (currentTrack.length === 0) return;
-
-      // Find the relative timestamp of the first note to anchor the loop
-      const firstNoteTime = currentTrack[0].time;
-      const lastNoteTime = currentTrack[currentTrack.length - 1].time;
+  // Starts or refreshes looping for a specific track index
+  function startSingleTrackPlayback(index) {
+      const track = tracks[index];
       
-      // Keep a standard 4-second loop, or auto-extend if you play longer than 4 seconds
+      // Clear timers just for this track layer
+      track.loopTimeoutIds.forEach(id => clearTimeout(id));
+      track.loopTimeoutIds = [];
+      if (track.loopIntervalId) clearInterval(track.loopIntervalId);
+
+      if (!isPlaying || track.notes.length === 0) return;
+
+      const firstNoteTime = track.notes[0].time;
+      const lastNoteTime = track.notes[track.notes.length - 1].time;
       const dynamicDuration = Math.max(loopDuration, (lastNoteTime - firstNoteTime) + 500);
 
-      // Helper function to map names back to audio variables and play them
       function playNote(drumName) {
           let sound;
           if (drumName === "closed_hi_hat") sound = closed_hi_hat;
@@ -64,60 +51,72 @@ function addToTrack(drumName) {
           if (drumName === "shaker") sound = shaker;
 
           if (sound) {
-              // Clone the audio so notes can cleanly overlap
               const clone = sound.cloneNode();
               clone.play().catch(() => {});
           }
       }
 
       function scheduleNotes() {
-          currentTrack.forEach(hit => {
+          track.notes.forEach(hit => {
               const delay = hit.time - firstNoteTime;
               const tId = setTimeout(() => playNote(hit.drum), delay);
-              loopTimeoutIds.push(tId);
+              track.loopTimeoutIds.push(tId);
           });
       }
 
-      // Play immediately once, then repeat seamlessly on the calculated loop boundary
       scheduleNotes();
-      loopIntervalId = setInterval(() => {
-          loopTimeoutIds.forEach(id => clearTimeout(id));
-          loopTimeoutIds = [];
+      track.loopIntervalId = setInterval(() => {
+          track.loopTimeoutIds.forEach(id => clearTimeout(id));
+          track.loopTimeoutIds = [];
           scheduleNotes();
       }, dynamicDuration);
   }
 
+  // Refreshes playback for all tracks simultaneously (used for play/pause toggles)
+  function startAllTrackPlayback() {
+      tracks.forEach((_, index) => startSingleTrackPlayback(index));
+  }
+
+  // Triggered by the H key: Creates a fresh layer and targets it
+  function addNewTrackLayer() {
+      tracks.push({ notes: [], loopIntervalId: null, loopTimeoutIds: [] });
+      activeTrackIndex = tracks.length - 1;
+      console.log(`Created Track Layer #${tracks.length}. You are now recording on this new layer!`);
+  }
+
   function playAudio(audio, drumName) {
-      // Play the audio
       audio.play();
 
-      // Record this hit in the current track
-      currentTrack.push({
+      // Record specifically into the active track layer's notes array
+      tracks[activeTrackIndex].notes.push({
           drum: drumName,
           time: performance.now()
       });
 
-      console.log("Current track:", currentTrack);
+      console.log(`Track #${activeTrackIndex + 1} updated:`, tracks[activeTrackIndex].notes);
 
-      // Refresh and update the loop scheduling whenever a change happens
       isPlaying = true;
-      startLoopPlayback();
+      
+      // Only refresh the loop for the layer you are currently editing
+      startSingleTrackPlayback(activeTrackIndex);
   }
 
   function togglePlayPause() {
-      if (currentTrack.length === 0) {
-          console.log("Track is empty. Play a drum first to record something!");
+      // Check if there are any notes across any of the layers
+      const totalNotesCount = tracks.reduce((acc, t) => acc + t.notes.length, 0);
+      if (totalNotesCount === 0) {
+          console.log("All tracks are empty. Play a drum first!");
           return;
       }
       
       isPlaying = !isPlaying;
       
       if (isPlaying) {
-          console.log("Playback Resumed");
-          startLoopPlayback();
+          console.log("All tracks resumed");
+          startAllTrackPlayback();
       } else {
-          console.log("Playback Paused");
-          stopLoopPlayback();
+          console.log("All tracks paused");
+          stopAllTrackPlayback();
       }
   }
   
@@ -127,6 +126,11 @@ document.addEventListener("keydown", (event) => {
   if (event.code === 'KeyG'){
     event.preventDefault();
     togglePlayPause();
+  }
+
+  if (event.code === 'KeyH') {
+    event.preventDefault();
+    addNewTrackLayer();
   }
   
   if (event.code === 'KeyA'){
