@@ -159,7 +159,7 @@ function playDrumSound(id: string, scheduledAt?: number, isLoopPlayback = false)
     const oscillator = context.createOscillator()
     const settings = {
       kick: { start: 150, end: 45, duration: 0.22, volume: 0.8, type: 'sine' as OscillatorType },
-      bass: { start: 92, end: 52, duration: 0.48, volume: 0.58, type: 'sine' as OscillatorType },
+      bass: { start: 120, end: 54, duration: 0.3, volume: 0.64, type: 'sine' as OscillatorType },
       low_tom: { start: 155, end: 82, duration: 0.32, volume: 0.62, type: 'triangle' as OscillatorType },
       high_tom: { start: 260, end: 145, duration: 0.24, volume: 0.54, type: 'triangle' as OscillatorType },
     }[id]
@@ -236,6 +236,7 @@ export default function App() {
   const drumMetronomeTimerRef = useRef<number | null>(null)
   const nextDrumMetronomeBeatRef = useRef<number | null>(null)
   const drumFlashTimerRef = useRef<number | null>(null)
+  const lastBassTriggerAtRef = useRef<number>(-Infinity)
   const isDrumRecordingRef = useRef(false)
   const isDrumCountInRef = useRef(false)
   const drumCountInTimerRef = useRef<number | null>(null)
@@ -634,6 +635,10 @@ export default function App() {
   const triggerDrum = useCallback((id: string) => {
     const pad = drumPads.find(item => item.id === id)
     if (!pad) return
+    const triggerAt = window.performance.now()
+    // Ignore near-identical Bass events that can arrive twice from keyboard focus/input handling.
+    if (id === 'bass' && triggerAt - lastBassTriggerAtRef.current < 55) return
+    if (id === 'bass') lastBassTriggerAtRef.current = triggerAt
     playDrumSound(id)
     setActiveDrum(id)
     if (drumFlashTimerRef.current !== null) window.clearTimeout(drumFlashTimerRef.current)
