@@ -1,4 +1,5 @@
 import os
+import re
 import time
 from collections import defaultdict, deque
 
@@ -68,12 +69,11 @@ async def speech(payload: SpeechRequest, request: Request):
     origin = request.headers.get("origin")
     allowed_origin = (
         origin == "http://localhost:3000"
-        or bool(origin and __import__("re").fullmatch(
+        or bool(origin and re.fullmatch(
             r"https://([a-zA-Z0-9-]+\.)*(figma\.com|figma\.site)", origin
         ))
     )
-    # Non-browser clients may omit Origin; the IP throttle and input limit still apply.
-    if origin and not allowed_origin:
+    if not allowed_origin:
         raise HTTPException(status_code=403, detail="This origin is not allowed.")
 
     client_ip = request.client.host if request.client else "unknown"
