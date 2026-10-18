@@ -60,10 +60,11 @@ type DrumLayer = {
 
 const createInitialDrumLayers = (): DrumLayer[] => [{ id: 1, name: 'Layer 1', hits: [] }]
 
-const DRUM_LOOP_DURATION_MS = 4000
-const DRUM_COUNT_IN_BPM = 92
+const DRUM_COUNT_IN_BPM = 80
+const DRUM_BEAT_DURATION_MS = 60000 / DRUM_COUNT_IN_BPM
+const DRUM_LOOP_DURATION_MS = DRUM_BEAT_DURATION_MS * 4
 
-function playCountInBeat(isAccent: boolean) {
+function playCountInBeat(isAccent: boolean, atTime?: number, isStartCue = false) {
   const AudioContextClass = window.AudioContext
   if (!drumAudioContext || drumAudioContext.state === 'closed') {
     drumAudioContext = new AudioContextClass()
@@ -73,14 +74,16 @@ function playCountInBeat(isAccent: boolean) {
   const oscillator = context.createOscillator()
   const gain = context.createGain()
   oscillator.type = 'triangle'
-  oscillator.frequency.setValueAtTime(isAccent ? 880 : 660, context.currentTime)
-  gain.gain.setValueAtTime(0.0001, context.currentTime)
-  gain.gain.exponentialRampToValueAtTime(isAccent ? 0.24 : 0.16, context.currentTime + 0.008)
-  gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.11)
+  const startAt = atTime ?? context.currentTime
+  const duration = isStartCue ? 0.24 : 0.11
+  oscillator.frequency.setValueAtTime(isStartCue ? 1180 : isAccent ? 880 : 660, startAt)
+  gain.gain.setValueAtTime(0.0001, startAt)
+  gain.gain.exponentialRampToValueAtTime(isStartCue ? 0.34 : isAccent ? 0.24 : 0.16, startAt + 0.008)
+  gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration)
   oscillator.connect(gain)
   gain.connect(context.destination)
-  oscillator.start(context.currentTime)
-  oscillator.stop(context.currentTime + 0.12)
+  oscillator.start(startAt)
+  oscillator.stop(startAt + duration)
 }
 
 const starterTracks: Track[] = [
@@ -195,6 +198,8 @@ export default function App() {
   const drumLayersRef = useRef(drumLayers)
   const drumLoopCycleTimerRef = useRef<number | null>(null)
   const drumLoopHitTimersRef = useRef<number[]>([])
+  const drumMetronomeTimerRef = useRef<number | null>(null)
+  const nextDrumMetronomeBeatRef = useRef<number | null>(null)
   const drumFlashTimerRef = useRef<number | null>(null)
   const isDrumRecordingRef = useRef(false)
   const isDrumCountInRef = useRef(false)
@@ -244,7 +249,7 @@ export default function App() {
       } else if (trackType === 'drums') {
         narration = [
           'Create Drums.',
-          'Build a four-second loop with eight drum pads.',
+          'Build a four-beat loop with eight drum pads at 80 beats per minute.',
           'Press A for Closed Hi-Hat.',
           'S for Kick.',
           'D for Snare.',
@@ -254,7 +259,7 @@ export default function App() {
           'L for Bass.',
           'Semicolon for Shaker.',
           'G plays or pauses all layers. H adds a layer. R starts or stops recording.',
-          drumSequence.length ? `Your current pattern has ${drumSequence.length} hits across ${drumLayers.length} layers.` : 'Press R to hear a four-beat count-in, then recording starts. Press R again to stop and commit the layer.',
+          drumSequence.length ? `Your current pattern has ${drumSequence.length} hits across ${drumLayers.length} layers.` : 'Press R to hear a four-beat count-in. A higher tone signals recording start. The metronome continues during recording and loop playback. Press R again to stop and commit the layer.',
         ]
       } else {
         narration = [
@@ -410,6 +415,38 @@ export default function App() {
     drumLayersRef.current = drumLayers
   }, [drumLayers])
 
+  const stopDrumMetronome = useCallback(() => {
+    if (drumMetronomeTimerRef.current !== null) window.clearInterval(drumMetronomeTimerRef.current)
+    drumMetronomeTimerRef.current = null
+    nextDrumMetronomeBeatRef.current = null
+  }, [])
+
+  const startDrumMetronome = useCallback((originMs: number, restart = false, clickOnOrigin = false) => {
+    if (drumMetronomeTimerRef.current !== null && !restart) return
+    stopDrumMetronome()
+    const beatDurationMs = DRUM_BEAT_DURATION_MS
+    nextDrumMetronomeBeatRef.current = originMs + beatDurationMs
+    if (clickOnOrigin) playCountInBeat(true)
+    drumMetronomeTimerRef.current = window.setInterval(() => {
+      const context = drumAudioContext
+      if (!context || context.state === 'closed') return
+      if (context.state === 'suspended') void context.resume()
+      const nowMs = window.performance.now()
+      const nextBeatMs = nextDrumMetronomeBeatRef.current
+      if (nextBeatMs === null) return
+
+      // Schedule clicks against the audio clock slightly ahead of time so timer jitter does not shift the beat.
+      while (nextDrumMetronomeBeatRef.current !== null && nextDrumMetronomeBeatRef.current <= nowMs + 100) {
+        const scheduledBeatMs = nextDrumMetronomeBeatRef.current
+        if (scheduledBeatMs >= nowMs - beatDurationMs) {
+          const audioTime = context.currentTime + Math.max(0, scheduledBeatMs - nowMs) / 1000
+          playCountInBeat(false, audioTime)
+        }
+        nextDrumMetronomeBeatRef.current = scheduledBeatMs + beatDurationMs
+      }
+    }, 25)
+  }, [stopDrumMetronome])
+
   const clearDrumLoopTimers = useCallback(() => {
     if (drumLoopCycleTimerRef.current !== null) {
       window.clearTimeout(drumLoopCycleTimerRef.current)
@@ -421,16 +458,18 @@ export default function App() {
 
   const stopDrumLoop = useCallback(() => {
     clearDrumLoopTimers()
-    if (drumAudioContext?.state === 'running') void drumAudioContext.suspend()
+    if (!isDrumRecordingRef.current) stopDrumMetronome()
+    if (drumAudioContext?.state === 'running' && !isDrumRecordingRef.current) void drumAudioContext.suspend()
     drumPlaybackOriginRef.current = null
     setIsDrumLoopPlaying(false)
     setDrumStatus(isDrumRecordingRef.current ? 'Playback paused. Recording continues.' : 'Playback paused.')
-  }, [clearDrumLoopTimers])
+  }, [clearDrumLoopTimers, stopDrumMetronome])
 
   const startDrumLoop = useCallback(() => {
     if (drumLoopCycleTimerRef.current !== null) return
     clearDrumLoopTimers()
     drumPlaybackOriginRef.current = window.performance.now()
+    startDrumMetronome(drumPlaybackOriginRef.current, true, true)
     const scheduleCycle = () => {
       const layers = drumLayersRef.current
       const hits = layers.flatMap(layer => layer.hits)
@@ -454,7 +493,7 @@ export default function App() {
     setIsDrumLoopPlaying(true)
     scheduleCycle()
     setDrumStatus('Playback started. Completed layers are looping.')
-  }, [clearDrumLoopTimers])
+  }, [clearDrumLoopTimers, startDrumMetronome])
 
   const toggleDrumLoop = useCallback(() => {
     if (isDrumLoopPlaying) stopDrumLoop()
@@ -463,11 +502,16 @@ export default function App() {
 
   const resetDrumSequencer = useCallback(() => {
     stopDrumLoop()
+    if (drumCountInTimerRef.current !== null) window.clearTimeout(drumCountInTimerRef.current)
+    drumCountInTimerRef.current = null
+    isDrumCountInRef.current = false
+    setIsDrumCountIn(false)
     const initialLayers = createInitialDrumLayers()
     drumLayersRef.current = initialLayers
     activeDrumLayerIdRef.current = 1
     drumRecordingOriginRef.current = null
     isDrumRecordingRef.current = false
+    stopDrumMetronome()
     committedDrumLayerIdsRef.current.clear()
     nextDrumLayerIdRef.current = 2
     setDrumLayers(initialLayers)
@@ -476,7 +520,7 @@ export default function App() {
     setDrumStatus('Ready to record Layer 1.')
     setDrumSequence([])
     setActiveDrum(null)
-  }, [stopDrumLoop])
+  }, [stopDrumLoop, stopDrumMetronome])
 
   const openDescribe = () => {
     setTrackType(null)
@@ -490,8 +534,13 @@ export default function App() {
 
   const closeDescribe = () => {
     stopDrumLoop()
+    if (drumCountInTimerRef.current !== null) window.clearTimeout(drumCountInTimerRef.current)
+    drumCountInTimerRef.current = null
+    isDrumCountInRef.current = false
+    setIsDrumCountIn(false)
     isDrumRecordingRef.current = false
     drumRecordingOriginRef.current = null
+    stopDrumMetronome()
     setIsDrumRecording(false)
     setShowDescribe(false)
     setIsListening(false)
@@ -590,6 +639,7 @@ export default function App() {
         startDrumLoop()
         setDrumStatus(`${layerName} stopped and committed with ${hitCount} hits. Layer 1 playback started and is looping.`)
       } else {
+        if (!playbackIsRunning) stopDrumMetronome()
         setDrumStatus(`${layerName} stopped and committed with ${hitCount} hits.${playbackIsRunning ? ' Existing playback continues.' : ''}`)
       }
       return
@@ -624,7 +674,7 @@ export default function App() {
     setIsDrumCountIn(true)
     setDrumStatus(`Count-in: 4 beats. Recording ${recordingLayer.name} starts after the count.`)
 
-    const beatDurationMs = 60000 / DRUM_COUNT_IN_BPM
+    const beatDurationMs = DRUM_BEAT_DURATION_MS
     const tick = (beat: number) => {
       if (!isDrumCountInRef.current) return
       playCountInBeat(beat === 4)
@@ -638,10 +688,13 @@ export default function App() {
         drumCountInTimerRef.current = null
         isDrumCountInRef.current = false
         setIsDrumCountIn(false)
-        drumRecordingOriginRef.current =
+        const recordingOrigin =
           playbackIsRunning && drumPlaybackOriginRef.current !== null
             ? drumPlaybackOriginRef.current
             : window.performance.now()
+        drumRecordingOriginRef.current = recordingOrigin
+        playCountInBeat(false, undefined, true)
+        startDrumMetronome(recordingOrigin, false)
         isDrumRecordingRef.current = true
         setIsDrumRecording(true)
         setDrumStatus(`Recording ${recordingLayer.name}. Press R again to stop and commit this layer.`)
@@ -649,7 +702,7 @@ export default function App() {
     }
     playCountInBeat(true)
     drumCountInTimerRef.current = window.setTimeout(() => tick(3), beatDurationMs)
-  }, [startDrumLoop])
+  }, [startDrumLoop, stopDrumMetronome])
 
   useEffect(() => {
     if (!showDescribe || trackType !== 'drums') return
@@ -693,12 +746,15 @@ export default function App() {
       setIsDrumCountIn(false)
       isDrumRecordingRef.current = false
       drumRecordingOriginRef.current = null
+      stopDrumMetronome()
       setIsDrumRecording(false)
     }
-  }, [showDescribe, stopDrumLoop, trackType])
+  }, [showDescribe, stopDrumLoop, stopDrumMetronome, trackType])
 
   useEffect(() => () => {
     clearDrumLoopTimers()
+    if (drumMetronomeTimerRef.current !== null) window.clearInterval(drumMetronomeTimerRef.current)
+    drumMetronomeTimerRef.current = null
     if (drumCountInTimerRef.current !== null) window.clearTimeout(drumCountInTimerRef.current)
     isDrumCountInRef.current = false
     isDrumRecordingRef.current = false
@@ -973,7 +1029,7 @@ export default function App() {
               <div>
                 <div className="mb-2 flex items-center gap-2 text-[#046492]"><Icon name="sparkles" size={18}/><span className="text-xs font-bold uppercase tracking-[.18em]">Add a track</span></div>
                 <h2 id="describe-title" className="font-serif text-3xl font-bold">{trackType ? `Create ${trackType === 'drums' ? 'Drums' : trackType === 'melody' ? 'a Melodic Instrument' : 'Vocals'}` : 'Choose a track type'}</h2>
-                <p className="mt-2 text-sm leading-6 text-[#607c89]">{trackType === 'drums' ? 'Build a four-second beat with eight keyboard pads and manually recorded layers.' : trackType ? 'Describe your idea in words or record a reference. You can use either option or both.' : 'What kind of sound would you like to add to this project?'}</p>
+                <p className="mt-2 text-sm leading-6 text-[#607c89]">{trackType === 'drums' ? 'Build a four-beat loop at 80 beats per minute with eight keyboard pads and manually recorded layers.' : trackType ? 'Describe your idea in words or record a reference. You can use either option or both.' : 'What kind of sound would you like to add to this project?'}</p>
               </div>
               <button onClick={closeDescribe} aria-label="Close add track dialog" className="focus-ring grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#eef7fb] text-xl hover:bg-[#e1e8e4]">×</button>
             </div>
@@ -1001,7 +1057,7 @@ export default function App() {
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
                         <span className="block text-sm font-bold">Beat layers</span>
-                        <span className="mt-0.5 block text-xs text-[#526f7d]">4 second loop · all layers play together</span>
+                        <span className="mt-0.5 block text-xs text-[#526f7d]">4 beat loop at 80 BPM · all layers play together</span>
                       </div>
                       <button type="button" onClick={toggleDrumLoop} disabled={!drumLayers.some(layer => layer.hits.length)} className={`focus-ring flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-40 ${isDrumLoopPlaying ? 'bg-[#fb9b6d] text-[#071c2b]' : 'bg-[#046492] text-white hover:bg-[#03577f]'}`}>
                         <Icon name={isDrumLoopPlaying ? 'pause' : 'play'} size={16}/>
