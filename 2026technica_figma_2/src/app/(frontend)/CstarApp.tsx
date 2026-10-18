@@ -437,7 +437,7 @@ export default function App() {
         : ['Create-account page. From top to bottom: name, email, password, and Create account. On wide screens, the Cstar welcome panel is on the left.']
     } else if (showDescribe) {
       if (!trackType) {
-        narration = ['Add Track dialog. From left to right: Drums and Melodic Instrument. Choose a type to continue.']
+        narration = ['Add Track dialog. From left to right: Drums, Melodic Instrument, and Voice Recording. Choose a type to continue.']
       } else if (trackType === 'drums') {
         const activeLayer = drumLayers.find(layer => layer.id === activeDrumLayerId)
         narration = [
@@ -454,8 +454,8 @@ export default function App() {
               generationError || 'Press Generate with Eleven Music or Shift plus S to create a melody from the text description.',
             ]
           : [
-              'Vocals editor. From top to bottom: description, reference recording, dictation, and add vocal track.',
-              generationError || 'Shift plus S saves this track to the project.',
+              'Voice Recording. Record spoken, sung, or other audio with the Record Sound button. The finished recording is added to the project as a track.',
+              audioTrackStatus || 'Choose Record Sound to begin. Choose Stop Recording to finish and add the audio track.',
             ]
       }
     } else if (page === 'home') {
@@ -1021,7 +1021,7 @@ export default function App() {
       melodySpeechRecognitionRef.current = null
     }
     setIsMelodyDictating(false)
-    if (trackType === 'melody' && isAudioRecording) stopAudioRecording()
+    if (isAudioRecording) stopAudioRecording()
     stopDrumLoop()
     if (drumCountInTimerRef.current !== null) window.clearTimeout(drumCountInTimerRef.current)
     drumCountInTimerRef.current = null
@@ -1221,8 +1221,7 @@ export default function App() {
       if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
       if (event.key.toLowerCase() === 'r' && trackType === 'melody') {
         event.preventDefault()
-        if (isAudioRecording) stopAudioRecording()
-        else void startAudioRecording()
+        document.querySelector<HTMLButtonElement>('[data-reader-section="Dictate melody description"]')?.click()
         return
       }
       if (trackType !== 'drums') return
@@ -1310,6 +1309,7 @@ export default function App() {
 
   const addTrack = async () => {
     if (!trackType) return
+    if (trackType === 'vocals') return
     if (trackType === 'melody' && !description.trim()) {
       setGenerationError('Describe the instrument, melody, and mood you want.')
       return
@@ -1381,7 +1381,7 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (!showDescribe || !trackType) return
+    if (!showDescribe || !trackType || trackType === 'vocals') return
     const handleSaveShortcut = (event: KeyboardEvent) => {
       if (event.repeat || !event.shiftKey || event.key.toLowerCase() !== 's') return
       const target = event.target as HTMLElement | null
@@ -1702,8 +1702,8 @@ export default function App() {
             <div className="flex items-start justify-between gap-5">
               <div>
                 <div className="mb-2 flex items-center gap-2 text-[#046492]"><Icon name="sparkles" size={18}/><span className="text-xs font-bold uppercase tracking-[.18em]">Add a track</span></div>
-                <h2 id="describe-title" className="font-serif text-3xl font-bold">{trackType ? `Create ${trackType === 'drums' ? 'Drums' : trackType === 'melody' ? 'a Melodic Instrument' : 'Vocals'}` : 'Choose a track type'}</h2>
-                <p className="mt-2 text-sm leading-6 text-[#607c89]">{trackType === 'drums' ? 'Build a four-beat loop at 80 beats per minute with four keyboard pads and manually recorded layers.' : trackType === 'melody' ? 'Describe the instrument, melody, and mood you want. Eleven Music will generate it from your description.' : trackType === 'vocals' ? 'Describe your idea, record a reference, or use dictation.' : 'What kind of sound would you like to add to this project?'}</p>
+                <h2 id="describe-title" className="font-serif text-3xl font-bold">{trackType ? `Create ${trackType === 'drums' ? 'Drums' : trackType === 'melody' ? 'a Melodic Instrument' : 'Voice Recording'}` : 'Choose a track type'}</h2>
+                <p className="mt-2 text-sm leading-6 text-[#607c89]">{trackType === 'drums' ? 'Build a four-beat loop at 80 beats per minute with four keyboard pads and manually recorded layers.' : trackType === 'melody' ? 'Describe the instrument, melody, and mood you want. Eleven Music will generate it from your description.' : trackType === 'vocals' ? 'Record a voice, instrument, or other sound directly into your project.' : 'What kind of sound would you like to add to this project?'}</p>
               </div>
               <button onClick={closeDescribe} aria-label="Close add track dialog" className="focus-ring grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#eef7fb] text-xl hover:bg-[#e1e8e4]">×</button>
             </div>
@@ -1713,6 +1713,7 @@ export default function App() {
                 {[
                   { id: 'drums' as const, title: 'Drums', detail: 'Beats, percussion and rhythm', icon: 'volume' as const, color: '#f3d4bf' },
                   { id: 'melody' as const, title: 'Melodic Instrument', detail: 'Piano, strings, guitar and more', icon: 'sparkles' as const, color: '#cfe8f3' },
+                  { id: 'vocals' as const, title: 'Voice Recording', detail: 'Record a voice, instrument, or other sound', icon: 'mic' as const, color: '#ddd5ee' },
                 ].map(option => (
                   <button key={option.id} data-reader-section={option.title} autoFocus={option.id === 'drums'} onClick={() => setTrackType(option.id)} className="focus-ring group flex min-h-48 flex-col items-start rounded-2xl border border-[#d7e8f0] p-5 text-left transition hover:-translate-y-1 hover:border-[#046492] hover:shadow-lg">
                     <span className="grid h-12 w-12 place-items-center rounded-xl text-[#075b83]" style={{ backgroundColor: option.color }}><Icon name={option.icon} size={23}/></span>
@@ -1860,19 +1861,24 @@ export default function App() {
                             }
                           }} className={`focus-ring flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-bold ${isMelodyDictating ? 'bg-[#fb9b6d] text-[#17272f]' : 'bg-[#e8f4f8] text-[#075b83] hover:bg-[#d9edf5]'}`}>
                             <Icon name={isMelodyDictating ? 'pause' : 'mic'} size={16}/>{isMelodyDictating ? 'Stop dictation' : 'Dictate description'}
-                          </button>
-                          <button type="button" data-reader-section="Record melody audio" aria-pressed={isAudioRecording} onClick={() => isAudioRecording ? stopAudioRecording() : void startAudioRecording()} className={`focus-ring flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-bold ${isAudioRecording ? 'bg-[#fb9b6d] text-[#17272f]' : 'bg-[#e8f4f8] text-[#075b83] hover:bg-[#d9edf5]'}`}>
-                            <Icon name={isAudioRecording ? 'pause' : 'mic'} size={16}/>{isAudioRecording ? `Stop recording ${formatTimelineTime(audioRecordingMs)}` : 'Record sound'} <kbd className="rounded border border-current/40 px-1.5 py-0.5 font-mono text-[10px]">R</kbd>
+                            <kbd className="rounded border border-current/40 px-1.5 py-0.5 font-mono text-[10px]">R</kbd>
                           </button>
                         </div>
-                        <p className="mt-2 text-xs leading-5 text-[#526f7d]" aria-live="polite" aria-atomic="true">{melodyDictationStatus || (isAudioRecording ? 'Recording. Press R again to stop and add it to the project as an audio track.' : 'Dictation fills the description. R records a separate audio track in the project.')}</p>
+                        <p className="mt-2 text-xs leading-5 text-[#526f7d]" aria-live="polite" aria-atomic="true">{melodyDictationStatus || 'Press R or choose Dictate description to speak the melody prompt in English.'}</p>
                       </>
                     )}
                   </>
-                )}
-
-                {generationError && <p role="alert" className="mt-4 rounded-xl bg-[#fff0ed] px-4 py-3 text-sm font-medium text-[#8f382f]">{generationError}</p>}
-                <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button onClick={closeDescribe} disabled={isGenerating} className="focus-ring rounded-xl px-5 py-3 font-bold text-[#526f7d] hover:bg-[#eef7fb] disabled:cursor-not-allowed disabled:opacity-50">Cancel</button><button onClick={addTrack} disabled={isGenerating} className="focus-ring flex min-w-40 items-center justify-center gap-2 rounded-xl bg-[#046492] px-5 py-3 font-bold text-white hover:bg-[#03577f] disabled:cursor-wait disabled:opacity-70"><Icon name={trackType === 'drums' ? 'save' : 'sparkles'} size={18}/>{isGenerating ? (trackType === 'drums' ? 'Rendering…' : 'Generating…') : trackType === 'vocals' ? 'Add vocal track' : trackType === 'drums' ? 'Save Drum Track' : 'Generate with Eleven Music'}{!isGenerating && <kbd className="ml-1 rounded border border-white/40 px-1.5 py-0.5 font-mono text-[10px]">Shift+S</kbd>}</button></div>
+                ) : (
+                  <section data-reader-section="Voice Recording controls" className="mt-4 rounded-2xl border border-[#d7e8f0] bg-[#f3f9fc] p-4">
+                    <h3 className="text-sm font-bold">Voice Recording</h3>
+                    <p className="mt-1 text-sm leading-6 text-[#607c89]">Record a spoken, sung, or instrumental idea. When you stop, the recording is added to this project as an audio track.</p>
+                    <button type="button" data-reader-section="Record sound" aria-pressed={isAudioRecording} onClick={() => isAudioRecording ? stopAudioRecording() : void startAudioRecording()} className={`focus-ring mt-4 flex h-11 items-center gap-2 rounded-xl px-4 text-sm font-bold ${isAudioRecording ? 'bg-[#fb9b6d] text-[#17272f]' : 'bg-[#046492] text-white hover:bg-[#03577f]'}`}>
+                      <Icon name={isAudioRecording ? 'pause' : 'mic'} size={17}/>{isAudioRecording ? `Stop Recording · ${formatTimelineTime(audioRecordingMs)}` : 'Record Sound'}
+                    </button>
+                    <p className="mt-2 text-xs leading-5 text-[#526f7d]" aria-live="polite" aria-atomic="true">{audioTrackStatus || 'Microphone audio will be saved as a new track when recording stops.'}</p>
+                  </section>
+                )}                {generationError && <p role="alert" className="mt-4 rounded-xl bg-[#fff0ed] px-4 py-3 text-sm font-medium text-[#8f382f]">{generationError}</p>}
+                <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button onClick={closeDescribe} disabled={isGenerating} className="focus-ring rounded-xl px-5 py-3 font-bold text-[#526f7d] hover:bg-[#eef7fb] disabled:cursor-not-allowed disabled:opacity-50">{trackType === 'vocals' ? 'Done' : 'Cancel'}</button>{trackType !== 'vocals' && <button onClick={addTrack} disabled={isGenerating} className="focus-ring flex min-w-40 items-center justify-center gap-2 rounded-xl bg-[#046492] px-5 py-3 font-bold text-white hover:bg-[#03577f] disabled:cursor-wait disabled:opacity-70"><Icon name={trackType === 'drums' ? 'save' : 'sparkles'} size={18}/>{isGenerating ? (trackType === 'drums' ? 'Rendering…' : 'Generating…') : trackType === 'vocals' ? 'Add vocal track' : trackType === 'drums' ? 'Save Drum Track' : 'Generate with Eleven Music'}{!isGenerating && <kbd className="ml-1 rounded border border-white/40 px-1.5 py-0.5 font-mono text-[10px]">Shift+S</kbd>}</button>}</div>
               </>
             )}
           </section>
