@@ -259,7 +259,7 @@ export default function App() {
           'L for Bass.',
           'Semicolon for Shaker.',
           'G plays or pauses all layers. H adds a layer. R starts or stops recording.',
-          drumSequence.length ? `Your current pattern has ${drumSequence.length} hits across ${drumLayers.length} layers.` : 'Press R to hear a four-beat count-in. A higher tone signals recording start. The metronome continues during recording and loop playback. Press R again to stop and commit the layer.',
+          drumSequence.length ? `Your current pattern has ${drumSequence.length} hits across ${drumLayers.length} layers.` : 'Press R to hear a four-beat count-in. A higher tone signals recording start. The metronome continues during recording and stops when recording ends. Press R again to stop and commit the layer.',
         ]
       } else {
         narration = [
@@ -469,8 +469,10 @@ export default function App() {
     if (drumLoopCycleTimerRef.current !== null) return
     clearDrumLoopTimers()
     drumPlaybackOriginRef.current = window.performance.now()
-    startDrumMetronome(drumPlaybackOriginRef.current, true, true)
     const scheduleCycle = () => {
+      drumLoopCycleTimerRef.current = null
+      drumLoopHitTimersRef.current.forEach(timer => window.clearTimeout(timer))
+      drumLoopHitTimersRef.current = []
       const layers = drumLayersRef.current
       const hits = layers.flatMap(layer => layer.hits)
       const now = window.performance.now()
@@ -478,12 +480,12 @@ export default function App() {
       const elapsed = Math.max(0, now - origin)
       const cycleStart = origin + Math.floor(elapsed / DRUM_LOOP_DURATION_MS) * DRUM_LOOP_DURATION_MS
       const elapsedInCycle = now - cycleStart
-      drumLoopHitTimersRef.current = hits.map(hit =>
-        window.setTimeout(
-          () => playDrumSound(hit.id),
-          Math.max(0, hit.timeMs - elapsedInCycle),
-        ),
-      )
+      drumLoopHitTimersRef.current = hits.flatMap(hit => {
+        const delay = hit.timeMs - elapsedInCycle
+        // If the browser timer woke up late, skip stale hits instead of firing them in a burst.
+        if (delay < -35) return []
+        return [window.setTimeout(() => playDrumSound(hit.id), Math.max(0, delay))]
+      })
       drumLoopCycleTimerRef.current = window.setTimeout(
         scheduleCycle,
         Math.max(0, cycleStart + DRUM_LOOP_DURATION_MS - window.performance.now()),
@@ -493,7 +495,7 @@ export default function App() {
     setIsDrumLoopPlaying(true)
     scheduleCycle()
     setDrumStatus('Playback started. Completed layers are looping.')
-  }, [clearDrumLoopTimers, startDrumMetronome])
+  }, [clearDrumLoopTimers])
 
   const toggleDrumLoop = useCallback(() => {
     if (isDrumLoopPlaying) stopDrumLoop()
@@ -628,6 +630,7 @@ export default function App() {
       isDrumRecordingRef.current = false
       drumRecordingOriginRef.current = null
       setIsDrumRecording(false)
+      stopDrumMetronome()
 
       const committedLayer = drumLayersRef.current.find(
         layer => layer.id === activeDrumLayerIdRef.current,
@@ -639,7 +642,6 @@ export default function App() {
         startDrumLoop()
         setDrumStatus(`${layerName} stopped and committed with ${hitCount} hits. Layer 1 playback started and is looping.`)
       } else {
-        if (!playbackIsRunning) stopDrumMetronome()
         setDrumStatus(`${layerName} stopped and committed with ${hitCount} hits.${playbackIsRunning ? ' Existing playback continues.' : ''}`)
       }
       return
