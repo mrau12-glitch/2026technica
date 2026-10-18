@@ -8,6 +8,89 @@
   const bass = new Audio("/sounds/bass.mp3");
   const shaker = new Audio("/sounds/shaker.mp3");
 
+  let currentTrack = [];
+  let loopTimeoutIds = [];
+  let loopIntervalId = null;
+  const loopDuration = 4000;
+
+function addToTrack(drumName) {
+    const hit = {
+        drum: drumName,
+        time: audioContext.currentTime
+    };
+
+    currentTrack.push(hit);
+
+    console.log("Added to track:", hit);
+}
+
+ function startLoopPlayback() {
+      // Clear any existing active playback loops/timeouts
+      loopTimeoutIds.forEach(id => clearTimeout(id));
+      loopTimeoutIds = [];
+      if (loopIntervalId) clearInterval(loopIntervalId);
+
+      if (currentTrack.length === 0) return;
+
+      // Find the relative timestamp of the first note to anchor the loop
+      const firstNoteTime = currentTrack[0].time;
+      const lastNoteTime = currentTrack[currentTrack.length - 1].time;
+      
+      // Keep a standard 4-second loop, or auto-extend if you play longer than 4 seconds
+      const dynamicDuration = Math.max(loopDuration, (lastNoteTime - firstNoteTime) + 500);
+
+      // Helper function to map names back to audio variables and play them
+      function playNote(drumName) {
+          let sound;
+          if (drumName === "closed_hi_hat") sound = closed_hi_hat;
+          if (drumName === "kick") sound = kick;
+          if (drumName === "snare") sound = snare;
+          if (drumName === "low_tom") sound = low_tom;
+          if (drumName === "open_hi_hat") sound = open_hi_hat;
+          if (drumName === "high_tom") sound = high_tom;
+          if (drumName === "bass") sound = bass;
+          if (drumName === "shaker") sound = shaker;
+
+          if (sound) {
+              // Clone the audio so notes can cleanly overlap
+              const clone = sound.cloneNode();
+              clone.play().catch(() => {});
+          }
+      }
+
+      function scheduleNotes() {
+          currentTrack.forEach(hit => {
+              const delay = hit.time - firstNoteTime;
+              const tId = setTimeout(() => playNote(hit.drum), delay);
+              loopTimeoutIds.push(tId);
+          });
+      }
+
+      // Play immediately once, then repeat seamlessly on the calculated loop boundary
+      scheduleNotes();
+      loopIntervalId = setInterval(() => {
+          loopTimeoutIds.forEach(id => clearTimeout(id));
+          loopTimeoutIds = [];
+          scheduleNotes();
+      }, dynamicDuration);
+  }
+
+  function playAudio(audio, drumName) {
+      // Play the audio
+      audio.play();
+
+      // Record this hit in the current track
+      currentTrack.push({
+          drum: drumName,
+          time: performance.now()
+      });
+
+      console.log("Current track:", currentTrack);
+
+      // Refresh and update the loop scheduling whenever a change happens
+      startLoopPlayback();
+  }
+  
 document.addEventListener("keydown", (event) => {
   if (event.repeat) return;
   if (event.code === 'KeyA'){
@@ -57,31 +140,5 @@ document.addEventListener("keydown", (event) => {
   shaker.currentTime = 0;
   playAudio(shaker, "shaker");
   }
-
-  let currentTrack = [];
-
-function addToTrack(drumName) {
-    const hit = {
-        drum: drumName,
-        time: audioContext.currentTime
-    };
-
-    currentTrack.push(hit);
-
-    console.log("Added to track:", hit);
-}
-
-function playAudio(audio, drumName) {
-    // Play the audio
-    audio.play();
-
-    // Record this hit in the current track
-    currentTrack.push({
-        drum: drumName,
-        time: performance.now()
-    });
-
-    console.log("Current track:", currentTrack);
-}
 });
 </script>
