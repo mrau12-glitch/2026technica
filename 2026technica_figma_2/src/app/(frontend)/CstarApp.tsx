@@ -44,6 +44,7 @@ type Track = {
   color: string
   pattern: number[]
   audioUrl?: string
+  drumLayers?: DrumLayer[]
 }
 
 type DrumHit = {
@@ -213,6 +214,100 @@ function playDrumSound(id: string, scheduledAt?: number, isLoopPlayback = false)
   const offset = Math.random() * (2 - duration)
   source.start(now, offset, duration)
   if (isLoopPlayback) trackDrumLoopSource(source)
+}
+
+
+async function renderDrumLayersToWav(layers: DrumLayer[]) {
+  const sampleRate = 44100
+  const durationSeconds = 30
+  const frameCount = sampleRate * durationSeconds
+  const offline = new OfflineAudioContext(2, frameCount, sampleRate)
+  const noiseBuffers = new Map<string, AudioBuffer>()
+  const loopSeconds = DRUM_LOOP_DURATION_MS / 1000
+
+  for (const layer of layers) {
+    for (const hit of layer.hits) {
+      const duration = hit.id === 'open_hi_hat' ? 0.42 : hit.id === 'shaker' ? 0.22 : hit.id === 'snare' ? 0.18 : 0.08
+      for (let cycleStart = 0; cycleStart < durationSeconds; cycleStart += loopSeconds) {
+        const at = cycleStart + hit.timeMs / 1000
+        if (at >= durationSeconds) continue
+        const gain = offline.createGain()
+        gain.connect(offline.destination)
+
+        if (hit.id === 'kick' || hit.id === 'bass' || hit.id === 'low_tom' || hit.id === 'high_tom') {
+          const settings = {
+            kick: { start: 150, end: 45, duration: 0.22, volume: 0.8, type: 'sine' as OscillatorType },
+            bass: { start: 120, end: 54, duration: 0.3, volume: 0.64, type: 'sine' as OscillatorType },
+            low_tom: { start: 155, end: 82, duration: 0.32, volume: 0.62, type: 'triangle' as OscillatorType },
+            high_tom: { start: 260, end: 145, duration: 0.24, volume: 0.54, type: 'triangle' as OscillatorType },
+          }[hit.id]
+          const oscillator = offline.createOscillator()
+          oscillator.type = settings.type
+          oscillator.frequency.setValueAtTime(settings.start, at)
+          oscillator.frequency.exponentialRampToValueAtTime(settings.end, at + settings.duration * 0.72)
+          gain.gain.setValueAtTime(settings.volume, at)
+          gain.gain.exponentialRampToValueAtTime(0.01, at + settings.duration)
+          oscillator.connect(gain)
+          oscillator.start(at)
+          oscillator.stop(at + settings.duration + 0.01)
+          continue
+        }
+
+        let noiseBuffer = noiseBuffers.get(hit.id)
+        if (!noiseBuffer) {
+          noiseBuffer = offline.createBuffer(1, sampleRate * 2, sampleRate)
+          const data = noiseBuffer.getChannelData(0)
+          for (let i = 0; i < data.length; i++) {
+            const noise = Math.random() * 2 - 1
+            data[i] = hit.id === 'shaker' ? noise * (i % 13 < 4 ? 1 : 0.18) : noise
+          }
+          noiseBuffers.set(hit.id, noiseBuffer)
+        }
+        const source = offline.createBufferSource()
+        const filter = offline.createBiquadFilter()
+        filter.type = hit.id.includes('hi_hat') || hit.id === 'shaker' ? 'highpass' : 'bandpass'
+        filter.frequency.value = hit.id.includes('hi_hat') ? 6500 : hit.id === 'shaker' ? 4200 : 1500
+        gain.gain.setValueAtTime(hit.id === 'snare' ? 0.58 : hit.id === 'shaker' ? 0.28 : 0.34, at)
+        gain.gain.exponentialRampToValueAtTime(0.01, at + duration)
+        source.buffer = noiseBuffer
+        source.connect(filter)
+        filter.connect(gain)
+        source.start(at, Math.random() * (2 - duration), duration)
+      }
+    }
+  }
+
+  const rendered = await offline.startRendering()
+  const channels = rendered.numberOfChannels
+  const wav = new ArrayBuffer(44 + frameCount * channels * 2)
+  const view = new DataView(wav)
+  const writeText = (offset: number, text: string) => {
+    for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i))
+  }
+  writeText(0, 'RIFF')
+  view.setUint32(4, 36 + frameCount * channels * 2, true)
+  writeText(8, 'WAVE')
+  writeText(12, 'fmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true)
+  view.setUint16(22, channels, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * channels * 2, true)
+  view.setUint16(32, channels * 2, true)
+  view.setUint16(34, 16, true)
+  writeText(36, 'data')
+  view.setUint32(40, frameCount * channels * 2, true)
+
+  let offset = 44
+  const channelData = Array.from({ length: channels }, (_, channel) => rendered.getChannelData(channel))
+  for (let frame = 0; frame < frameCount; frame++) {
+    for (let channel = 0; channel < channels; channel++) {
+      const sample = Math.max(-1, Math.min(1, channelData[channel][frame]))
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true)
+      offset += 2
+    }
+  }
+  return new Blob([wav], { type: 'audio/wav' })
 }
 
 export default function App() {
@@ -876,37 +971,41 @@ export default function App() {
   const addTrack = async () => {
     if (!trackType) return
 
-    const typeNames = { drums: 'Drums', melody: 'Melodic Instrument', vocals: 'Vocals' }
+    const typeNames = { melody: 'Melodic Instrument', vocals: 'Vocals' }
     let audioUrl: string | undefined
+    const recordedLayers = drumLayers.filter(layer => layer.hits.length)
+    const effectiveDescription =
+      trackType === 'drums'
+        ? `Four-beat loop · ${recordedLayers.length} recorded ${recordedLayers.length === 1 ? 'layer' : 'layers'} · 80 BPM`
+        : description.trim()
 
-    const layeredDrumDescription = drumLayers
-      .filter(layer => layer.hits.length)
-      .map(layer => `${layer.name}: ${layer.hits.map(hit => `${hit.id} (${hit.name}) at ${hit.timeMs} milliseconds`).join(', ')}`)
-      .join('. ')
-    const effectiveDescription = trackType === 'drums' && layeredDrumDescription
-      ? `Build the groove around these recorded drum layers. ${layeredDrumDescription}.`
-      : description.trim()
-
-    if (trackType === 'drums' || trackType === 'melody') {
+    if (trackType === 'drums') {
+      if (!recordedLayers.length) {
+        setGenerationError('Record at least one drum hit before saving this track.')
+        return
+      }
       setIsGenerating(true)
       setGenerationError('')
-
+      try {
+        audioUrl = URL.createObjectURL(await renderDrumLayersToWav(recordedLayers))
+      } catch (error) {
+        setGenerationError(error instanceof Error ? error.message : 'Could not render the drum track.')
+        setIsGenerating(false)
+        return
+      }
+    } else if (trackType === 'melody') {
+      setIsGenerating(true)
+      setGenerationError('')
       try {
         const response = await fetch('/api/music/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: trackType,
-            prompt: effectiveDescription,
-            durationMs: 30000,
-          }),
+          body: JSON.stringify({ type: trackType, prompt: effectiveDescription, durationMs: 30000 }),
         })
-
         if (!response.ok) {
           const result = await response.json().catch(() => null)
           throw new Error(result?.error || 'Music generation failed. Please try again.')
         }
-
         audioUrl = URL.createObjectURL(await response.blob())
       } catch (error) {
         setGenerationError(error instanceof Error ? error.message : 'Music generation failed.')
@@ -915,12 +1014,14 @@ export default function App() {
       }
     }
 
+    const drumTrackNumber = projectTracks.filter(track => track.drumLayers?.length).length + 1
     const newTrack: Track = {
-      name: trackType ? typeNames[trackType] : `New Track ${projectTracks.length + 1}`,
+      name: trackType === 'drums' ? `Drum Track ${drumTrackNumber}` : typeNames[trackType],
       desc: effectiveDescription || 'AI-generated musical idea',
       color: ['#8fcde8', '#b9d9e8', '#fb9b6d', '#c9e4f0'][projectTracks.length % 4],
       pattern: [22, 38, 18, 44, 30, 25, 42, 19, 35, 28, 40, 20],
       audioUrl,
+      drumLayers: trackType === 'drums' ? recordedLayers.map(layer => ({ ...layer, hits: [...layer.hits] })) : undefined,
     }
     setProjectTracks([...projectTracks, newTrack])
     setActiveTrack(projectTracks.length)
@@ -1222,7 +1323,7 @@ export default function App() {
 
                 <button onClick={() => setIsListening(!isListening)} className={`focus-ring mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl border font-bold ${isListening ? 'border-[#a5483d] bg-[#fff2ef] text-[#8c352c]' : 'border-[#b8d3df] text-[#075b83] hover:bg-[#eef8fc]'}`}><Icon name={isListening ? 'pause' : 'mic'} size={17}/>{isListening ? 'Listening — tap to stop' : 'Dictate the description instead'}</button>
                 {generationError && <p role="alert" className="mt-4 rounded-xl bg-[#fff0ed] px-4 py-3 text-sm font-medium text-[#8f382f]">{generationError}</p>}
-                <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button onClick={closeDescribe} disabled={isGenerating} className="focus-ring rounded-xl px-5 py-3 font-bold text-[#526f7d] hover:bg-[#eef7fb] disabled:cursor-not-allowed disabled:opacity-50">Cancel</button><button onClick={addTrack} disabled={isGenerating} className="focus-ring flex min-w-40 items-center justify-center gap-2 rounded-xl bg-[#046492] px-5 py-3 font-bold text-white hover:bg-[#03577f] disabled:cursor-wait disabled:opacity-70"><Icon name="sparkles" size={18}/>{isGenerating ? 'Generating…' : trackType === 'vocals' ? 'Add vocal track' : 'Generate with Eleven Music'}</button></div>
+                <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button onClick={closeDescribe} disabled={isGenerating} className="focus-ring rounded-xl px-5 py-3 font-bold text-[#526f7d] hover:bg-[#eef7fb] disabled:cursor-not-allowed disabled:opacity-50">Cancel</button><button onClick={addTrack} disabled={isGenerating} className="focus-ring flex min-w-40 items-center justify-center gap-2 rounded-xl bg-[#046492] px-5 py-3 font-bold text-white hover:bg-[#03577f] disabled:cursor-wait disabled:opacity-70"><Icon name={trackType === 'drums' ? 'save' : 'sparkles'} size={18}/>{isGenerating ? (trackType === 'drums' ? 'Rendering…' : 'Generating…') : trackType === 'vocals' ? 'Add vocal track' : trackType === 'drums' ? 'Save Drum Track' : 'Generate with Eleven Music'}</button></div>
               </>
             )}
           </section>
