@@ -1,5 +1,8 @@
 # Cstar✨ 🌊 🎵 — 2026 Technica
 
+## Try the prototype
+https://russet-tusk-13606100.figma.site
+
 ## About the project
 
 Cstar Music is an accessible music-making workspace designed for blind and low-vision musicians. It brings voice guidance, recording, and track playback into one browser-based experience.
