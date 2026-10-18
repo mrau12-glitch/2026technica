@@ -1068,6 +1068,25 @@ export default function App() {
     // Ignore near-identical duplicate events for one pad while preserving quick hits on other pads.
     const lastTriggerAt = lastDrumTriggerAtRef.current.get(id)
     if (lastTriggerAt !== undefined && triggerAt - lastTriggerAt < 70) return
+
+    const recordingLayerId = activeDrumLayerIdRef.current
+    let hit: DrumHit | null = null
+    if (isDrumRecordingRef.current && drumRecordingOriginRef.current !== null) {
+      const elapsedMs = triggerAt - drumRecordingOriginRef.current
+      const timeMs = ((Math.round(elapsedMs) % DRUM_LOOP_DURATION_MS) + DRUM_LOOP_DURATION_MS) % DRUM_LOOP_DURATION_MS
+      const layer = drumLayersRef.current.find(item => item.id === recordingLayerId)
+      const isSameLoopPosition = layer?.hits.some(existing => {
+        if (existing.id !== pad.id) return false
+        const distance = Math.abs(existing.timeMs - timeMs)
+        const cyclicDistance = Math.min(distance, DRUM_LOOP_DURATION_MS - distance)
+        return cyclicDistance < 70
+      }) ?? false
+
+      // Recording is a four-beat loop: don't stack a later pass onto an already-recorded hit.
+      if (isSameLoopPosition) return
+      hit = { id: pad.id, name: pad.name, timeMs }
+    }
+
     lastDrumTriggerAtRef.current.set(id, triggerAt)
     playDrumSound(id)
     setActiveDrum(id)
@@ -1077,15 +1096,12 @@ export default function App() {
       drumFlashTimerRef.current = null
     }, 130)
 
-    if (!isDrumRecordingRef.current || drumRecordingOriginRef.current === null) return
+    if (!hit) return
 
     setDrumSequence(sequence => [...sequence, pad.name])
-    const recordingLayerId = activeDrumLayerIdRef.current
-    const timeMs = Math.round((triggerAt - drumRecordingOriginRef.current) % DRUM_LOOP_DURATION_MS)
-    const hit = { id: pad.id, name: pad.name, timeMs: Math.max(0, timeMs) }
     setDrumLayers(layers => {
       const updatedLayers = layers.map(layer =>
-        layer.id === recordingLayerId ? { ...layer, hits: [...layer.hits, hit] } : layer,
+        layer.id === recordingLayerId ? { ...layer, hits: [...layer.hits, hit!] } : layer,
       )
       drumLayersRef.current = updatedLayers
       return updatedLayers
