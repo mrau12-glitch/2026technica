@@ -44,6 +44,7 @@ type Track = {
   color: string
   pattern: number[]
   audioUrl?: string
+  drumLayers?: DrumLayer[]
 }
 
 type DrumHit = {
@@ -215,6 +216,99 @@ function playDrumSound(id: string, scheduledAt?: number, isLoopPlayback = false)
   if (isLoopPlayback) trackDrumLoopSource(source)
 }
 
+
+async function renderDrumLayersToWav(layers: DrumLayer[]) {
+  const sampleRate = 44100
+  const durationSeconds = 30
+  const frameCount = sampleRate * durationSeconds
+  const offline = new OfflineAudioContext(2, frameCount, sampleRate)
+  const noiseBuffers = new Map<string, AudioBuffer>()
+  const loopSeconds = DRUM_LOOP_DURATION_MS / 1000
+
+  for (const layer of layers) {
+    for (const hit of layer.hits) {
+      const duration = hit.id === 'open_hi_hat' ? 0.42 : hit.id === 'shaker' ? 0.22 : hit.id === 'snare' ? 0.18 : 0.08
+      for (let cycleStart = 0; cycleStart < durationSeconds; cycleStart += loopSeconds) {
+        const at = cycleStart + hit.timeMs / 1000
+        if (at >= durationSeconds) continue
+        const gain = offline.createGain()
+        gain.connect(offline.destination)
+        if (hit.id === 'kick' || hit.id === 'bass' || hit.id === 'low_tom' || hit.id === 'high_tom') {
+          const settings = {
+            kick: { start: 150, end: 45, duration: 0.22, volume: 0.8, type: 'sine' as OscillatorType },
+            bass: { start: 120, end: 54, duration: 0.3, volume: 0.64, type: 'sine' as OscillatorType },
+            low_tom: { start: 155, end: 82, duration: 0.32, volume: 0.62, type: 'triangle' as OscillatorType },
+            high_tom: { start: 260, end: 145, duration: 0.24, volume: 0.54, type: 'triangle' as OscillatorType },
+          }[hit.id]
+          const oscillator = offline.createOscillator()
+          oscillator.type = settings.type
+          oscillator.frequency.setValueAtTime(settings.start, at)
+          oscillator.frequency.exponentialRampToValueAtTime(settings.end, at + settings.duration * 0.72)
+          gain.gain.setValueAtTime(settings.volume, at)
+          gain.gain.exponentialRampToValueAtTime(0.01, at + settings.duration)
+          oscillator.connect(gain)
+          oscillator.start(at)
+          oscillator.stop(at + settings.duration + 0.01)
+          continue
+        }
+
+        let noiseBuffer = noiseBuffers.get(hit.id)
+        if (!noiseBuffer) {
+          noiseBuffer = offline.createBuffer(1, sampleRate * 2, sampleRate)
+          const data = noiseBuffer.getChannelData(0)
+          for (let i = 0; i < data.length; i++) {
+            const noise = Math.random() * 2 - 1
+            data[i] = hit.id === 'shaker' ? noise * (i % 13 < 4 ? 1 : 0.18) : noise
+          }
+          noiseBuffers.set(hit.id, noiseBuffer)
+        }
+        const source = offline.createBufferSource()
+        const filter = offline.createBiquadFilter()
+        filter.type = hit.id.includes('hi_hat') || hit.id === 'shaker' ? 'highpass' : 'bandpass'
+        filter.frequency.value = hit.id.includes('hi_hat') ? 6500 : hit.id === 'shaker' ? 4200 : 1500
+        gain.gain.setValueAtTime(hit.id === 'snare' ? 0.58 : hit.id === 'shaker' ? 0.28 : 0.34, at)
+        gain.gain.exponentialRampToValueAtTime(0.01, at + duration)
+        source.buffer = noiseBuffer
+        source.connect(filter)
+        filter.connect(gain)
+        source.start(at, Math.random() * (2 - duration), duration)
+      }
+    }
+  }
+
+  const rendered = await offline.startRendering()
+  const channels = rendered.numberOfChannels
+  const wav = new ArrayBuffer(44 + frameCount * channels * 2)
+  const view = new DataView(wav)
+  const writeText = (offset: number, text: string) => {
+    for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i))
+  }
+  writeText(0, 'RIFF')
+  view.setUint32(4, 36 + frameCount * channels * 2, true)
+  writeText(8, 'WAVE')
+  writeText(12, 'fmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true)
+  view.setUint16(22, channels, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, sampleRate * channels * 2, true)
+  view.setUint16(32, channels * 2, true)
+  view.setUint16(34, 16, true)
+  writeText(36, 'data')
+  view.setUint32(40, frameCount * channels * 2, true)
+
+  let offset = 44
+  const channelData = Array.from({ length: channels }, (_, channel) => rendered.getChannelData(channel))
+  for (let frame = 0; frame < frameCount; frame++) {
+    for (let channel = 0; channel < channels; channel++) {
+      const sample = Math.max(-1, Math.min(1, channelData[channel][frame]))
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true)
+      offset += 2
+    }
+  }
+  return new Blob([wav], { type: 'audio/wav' })
+}
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState<string | null>(null)
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login')
@@ -242,14 +336,7 @@ export default function App() {
   const [isDrumCountIn, setIsDrumCountIn] = useState(false)
   const [drumStatus, setDrumStatus] = useState('Ready to record Layer 1.')
   const [activeDrum, setActiveDrum] = useState<string | null>(null)
-  const [readStatus, setReadStatus] = useState<'idle' | 'loading' | 'reading'>('idle')
-  const [narrationSource, setNarrationSource] = useState<'elevenlabs' | 'device' | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
-  const narrationRef = useRef<SpeechSynthesisUtterance | null>(null)
-  const narrationAudioRef = useRef<HTMLAudioElement | null>(null)
-  const narrationRequestRef = useRef<AbortController | null>(null)
-  const narrationUrlRef = useRef<string | null>(null)
-  const narrationPauseRef = useRef<number | null>(null)
   const drumLayersRef = useRef(drumLayers)
   const drumLoopCycleTimerRef = useRef<number | null>(null)
   const drumLoopHitTimersRef = useRef<number[]>([])
@@ -265,177 +352,6 @@ export default function App() {
   const committedDrumLayerIdsRef = useRef<Set<number>>(new Set())
   const activeDrumLayerIdRef = useRef(1)
   const nextDrumLayerIdRef = useRef(2)
-
-  const stopNarration = useCallback(() => {
-    narrationRequestRef.current?.abort()
-    narrationRequestRef.current = null
-    narrationAudioRef.current?.pause()
-    narrationAudioRef.current = null
-    window.speechSynthesis?.cancel()
-    if (narrationPauseRef.current !== null) window.clearTimeout(narrationPauseRef.current)
-    narrationPauseRef.current = null
-    narrationRef.current = null
-    if (narrationUrlRef.current) URL.revokeObjectURL(narrationUrlRef.current)
-    narrationUrlRef.current = null
-    setNarrationSource(null)
-    setReadStatus('idle')
-  }, [])
-
-  const readCurrentPage = useCallback(async () => {
-    if (readStatus === 'loading' || readStatus === 'reading') {
-      stopNarration()
-      return
-    }
-
-    let narration: string[]
-    if (!currentUser) {
-      narration =
-        authMode === 'login'
-          ? ['Sign in to create.', 'Press the Sign in button to continue.', 'You can also continue with Google.', 'Email and password are optional in this demo.']
-          : ['Create your account.', 'Enter your name, email address, and a password with at least six characters.', 'Then press Create account.']
-    } else if (showDescribe) {
-      if (!trackType) {
-        narration = [
-          'Add a track.',
-          'Choose a track type.',
-          'Drums for beats, percussion, and rhythm.',
-          'Melodic Instrument for piano, strings, guitar, and more.',
-          'Or Vocals for singing, humming, and spoken voice.',
-        ]
-      } else if (trackType === 'drums') {
-        narration = [
-          'Create Drums.',
-          'Build a four-beat loop with four drum pads at 80 beats per minute.',
-          'Press A for Closed Hi-Hat.',
-          'S for Kick.',
-          'D for Snare.',
-          'F for Open Hi-Hat.',
-          'G plays or pauses all layers. H adds a layer. R starts or stops recording.',
-          drumSequence.length ? `Your current pattern has ${drumSequence.length} hits across ${drumLayers.length} layers.` : 'Press R to hear a four-beat count-in. A higher tone signals recording start. The metronome continues during recording and stops when recording ends. Press R again to stop and commit the layer.',
-        ]
-      } else {
-        narration = [
-          `Create ${trackType === 'melody' ? 'a Melodic Instrument' : 'Vocals'}.`,
-          'Describe the track in words or record a musical reference.',
-          generationError || (trackType === 'melody' ? 'Then generate it with Eleven Music.' : 'Then add the vocal track.'),
-        ]
-      }
-    } else if (page === 'home') {
-      narration = [
-        'Music Projects.',
-        'Three project cards are arranged across the page.',
-        'From left to right.',
-        ...projects.map(project => project.title),
-      ]
-    } else {
-      const trackSummary = projectTracks.length
-        ? projectTracks.map((track, index) => `${index === activeTrack ? 'Selected track' : 'Track'} ${index + 1}, ${track.name}, ${track.desc}.`)
-        : ['This project has no tracks yet.']
-      narration = [`Project ${projectTitle}.`, `${projectTracks.length} tracks.`, ...trackSummary, 'Choose Add Track to create another musical part.']
-    }
-
-    const speakWithDeviceVoice = () => {
-      if (!('speechSynthesis' in window)) {
-        setNarrationSource(null)
-        setReadStatus('idle')
-        return
-      }
-      setNarrationSource('device')
-      setReadStatus('reading')
-      const speakPart = (index: number) => {
-        const utterance = new SpeechSynthesisUtterance(narration[index])
-        narrationRef.current = utterance
-        utterance.lang = 'en-US'
-        utterance.rate = 0.78
-        utterance.onend = () => {
-          if (narrationRef.current !== utterance) return
-          if (index === narration.length - 1) {
-            narrationRef.current = null
-            setNarrationSource(null)
-            setReadStatus('idle')
-            return
-          }
-          narrationPauseRef.current = window.setTimeout(() => speakPart(index + 1), 650)
-        }
-        utterance.onerror = () => {
-          if (narrationRef.current === utterance) {
-            narrationRef.current = null
-            setNarrationSource(null)
-            setReadStatus('idle')
-          }
-        }
-        window.speechSynthesis.speak(utterance)
-      }
-      window.speechSynthesis.cancel()
-      speakPart(0)
-    }
-
-    const controller = new AbortController()
-    narrationRequestRef.current = controller
-    setReadStatus('loading')
-
-    try {
-      const response = await fetch('/api/speech/read', {
-        method: 'POST',
-        cache: 'no-store',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: narration.join(' ... ') }),
-        signal: controller.signal,
-      })
-      if (!response.ok) throw new Error('ElevenLabs narration is unavailable.')
-      if (!response.headers.get('content-type')?.startsWith('audio/')) {
-        speakWithDeviceVoice()
-        return
-      }
-
-      const audioUrl = URL.createObjectURL(await response.blob())
-      narrationUrlRef.current = audioUrl
-      const narrationAudio = new Audio(audioUrl)
-      narrationAudioRef.current = narrationAudio
-      narrationAudio.onended = stopNarration
-      narrationAudio.onerror = () => {
-        stopNarration()
-        speakWithDeviceVoice()
-      }
-      setNarrationSource('elevenlabs')
-      await narrationAudio.play()
-      setReadStatus('reading')
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') return
-      stopNarration()
-      speakWithDeviceVoice()
-    } finally {
-      narrationRequestRef.current = null
-    }
-  }, [
-    activeTrack,
-    authMode,
-    currentUser,
-    drumSequence.length,
-    drumLayers.length,
-    generationError,
-    page,
-    projectTitle,
-    projectTracks,
-    readStatus,
-    showDescribe,
-    stopNarration,
-    trackType,
-  ])
-
-  useEffect(() => {
-    const handleReadShortcut = (event: KeyboardEvent) => {
-      if (event.code !== 'Space' || event.repeat) return
-      const target = event.target as HTMLElement | null
-      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
-      event.preventDefault()
-      void readCurrentPage()
-    }
-    window.addEventListener('keydown', handleReadShortcut)
-    return () => window.removeEventListener('keydown', handleReadShortcut)
-  }, [readCurrentPage])
-
-  useEffect(() => () => stopNarration(), [stopNarration])
 
   const completeMockLogin = (name: string) => {
     setCurrentUser(name.trim() || 'Musician')
@@ -876,37 +792,41 @@ export default function App() {
   const addTrack = async () => {
     if (!trackType) return
 
-    const typeNames = { drums: 'Drums', melody: 'Melodic Instrument', vocals: 'Vocals' }
+    const typeNames = { melody: 'Melodic Instrument', vocals: 'Vocals' }
     let audioUrl: string | undefined
+    const recordedLayers = drumLayers.filter(layer => layer.hits.length)
+    const effectiveDescription =
+      trackType === 'drums'
+        ? `Four-beat loop · ${recordedLayers.length} recorded ${recordedLayers.length === 1 ? 'layer' : 'layers'} · 80 BPM`
+        : description.trim()
 
-    const layeredDrumDescription = drumLayers
-      .filter(layer => layer.hits.length)
-      .map(layer => `${layer.name}: ${layer.hits.map(hit => `${hit.id} (${hit.name}) at ${hit.timeMs} milliseconds`).join(', ')}`)
-      .join('. ')
-    const effectiveDescription = trackType === 'drums' && layeredDrumDescription
-      ? `Build the groove around these recorded drum layers. ${layeredDrumDescription}.`
-      : description.trim()
-
-    if (trackType === 'drums' || trackType === 'melody') {
+    if (trackType === 'drums') {
+      if (!recordedLayers.length) {
+        setGenerationError('Record at least one drum hit before saving this track.')
+        return
+      }
       setIsGenerating(true)
       setGenerationError('')
-
+      try {
+        audioUrl = URL.createObjectURL(await renderDrumLayersToWav(recordedLayers))
+      } catch (error) {
+        setGenerationError(error instanceof Error ? error.message : 'Could not render the drum track.')
+        setIsGenerating(false)
+        return
+      }
+    } else if (trackType === 'melody') {
+      setIsGenerating(true)
+      setGenerationError('')
       try {
         const response = await fetch('/api/music/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: trackType,
-            prompt: effectiveDescription,
-            durationMs: 30000,
-          }),
+          body: JSON.stringify({ type: trackType, prompt: effectiveDescription, durationMs: 30000 }),
         })
-
         if (!response.ok) {
           const result = await response.json().catch(() => null)
           throw new Error(result?.error || 'Music generation failed. Please try again.')
         }
-
         audioUrl = URL.createObjectURL(await response.blob())
       } catch (error) {
         setGenerationError(error instanceof Error ? error.message : 'Music generation failed.')
@@ -915,12 +835,14 @@ export default function App() {
       }
     }
 
+    const drumTrackNumber = projectTracks.filter(track => track.drumLayers?.length).length + 1
     const newTrack: Track = {
-      name: trackType ? typeNames[trackType] : `New Track ${projectTracks.length + 1}`,
+      name: trackType === 'drums' ? `Drum Track ${drumTrackNumber}` : typeNames[trackType],
       desc: effectiveDescription || 'AI-generated musical idea',
       color: ['#8fcde8', '#b9d9e8', '#fb9b6d', '#c9e4f0'][projectTracks.length % 4],
       pattern: [22, 38, 18, 44, 30, 25, 42, 19, 35, 28, 40, 20],
       audioUrl,
+      drumLayers: trackType === 'drums' ? recordedLayers.map(layer => ({ ...layer, hits: [...layer.hits] })) : undefined,
     }
     setProjectTracks([...projectTracks, newTrack])
     setActiveTrack(projectTracks.length)
@@ -1012,10 +934,6 @@ export default function App() {
             </div>
           </section>
         </div>
-        <button data-reader-ignore type="button" onClick={readCurrentPage} className="focus-ring fixed bottom-4 right-4 z-40 flex items-center gap-3 rounded-2xl border-2 border-[#046492] bg-white px-4 py-3 text-sm font-bold text-[#071c2b] shadow-xl hover:bg-[#eef7fb]" aria-label={readStatus === 'reading' ? 'Stop reading this page' : 'Read this page aloud'}>
-          <span className={`grid h-9 w-9 place-items-center rounded-xl ${readStatus === 'reading' ? 'bg-[#fb9b6d] text-[#071c2b]' : 'bg-[#046492] text-white'}`}><Icon name={readStatus === 'reading' ? 'volume' : 'accessibility'} size={19}/></span>
-          <span>{readStatus === 'loading' ? 'Preparing natural voice…' : readStatus === 'reading' ? `Reading with ${narrationSource === 'elevenlabs' ? 'ElevenLabs' : 'device voice'} — Space to stop` : 'Press Space to read this page'}</span>
-        </button>
       </main>
     )
   }
@@ -1222,16 +1140,12 @@ export default function App() {
 
                 <button onClick={() => setIsListening(!isListening)} className={`focus-ring mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl border font-bold ${isListening ? 'border-[#a5483d] bg-[#fff2ef] text-[#8c352c]' : 'border-[#b8d3df] text-[#075b83] hover:bg-[#eef8fc]'}`}><Icon name={isListening ? 'pause' : 'mic'} size={17}/>{isListening ? 'Listening — tap to stop' : 'Dictate the description instead'}</button>
                 {generationError && <p role="alert" className="mt-4 rounded-xl bg-[#fff0ed] px-4 py-3 text-sm font-medium text-[#8f382f]">{generationError}</p>}
-                <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button onClick={closeDescribe} disabled={isGenerating} className="focus-ring rounded-xl px-5 py-3 font-bold text-[#526f7d] hover:bg-[#eef7fb] disabled:cursor-not-allowed disabled:opacity-50">Cancel</button><button onClick={addTrack} disabled={isGenerating} className="focus-ring flex min-w-40 items-center justify-center gap-2 rounded-xl bg-[#046492] px-5 py-3 font-bold text-white hover:bg-[#03577f] disabled:cursor-wait disabled:opacity-70"><Icon name="sparkles" size={18}/>{isGenerating ? 'Generating…' : trackType === 'vocals' ? 'Add vocal track' : 'Generate with Eleven Music'}</button></div>
+                <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button onClick={closeDescribe} disabled={isGenerating} className="focus-ring rounded-xl px-5 py-3 font-bold text-[#526f7d] hover:bg-[#eef7fb] disabled:cursor-not-allowed disabled:opacity-50">Cancel</button><button onClick={addTrack} disabled={isGenerating} className="focus-ring flex min-w-40 items-center justify-center gap-2 rounded-xl bg-[#046492] px-5 py-3 font-bold text-white hover:bg-[#03577f] disabled:cursor-wait disabled:opacity-70"><Icon name={trackType === 'drums' ? 'save' : 'sparkles'} size={18}/>{isGenerating ? (trackType === 'drums' ? 'Rendering…' : 'Generating…') : trackType === 'vocals' ? 'Add vocal track' : trackType === 'drums' ? 'Save Drum Track' : 'Generate with Eleven Music'}</button></div>
               </>
             )}
           </section>
         </div>
       )}
-      <button data-reader-ignore type="button" onClick={readCurrentPage} className="focus-ring fixed bottom-4 right-4 z-40 flex items-center gap-3 rounded-2xl border-2 border-[#046492] bg-white px-4 py-3 text-sm font-bold text-[#071c2b] shadow-xl hover:bg-[#eef7fb]" aria-label={readStatus === 'reading' ? 'Stop reading this page' : 'Read this page aloud'}>
-        <span className={`grid h-9 w-9 place-items-center rounded-xl ${readStatus === 'reading' ? 'bg-[#fb9b6d] text-[#071c2b]' : 'bg-[#046492] text-white'}`}><Icon name={readStatus === 'reading' ? 'volume' : 'accessibility'} size={19}/></span>
-        <span>{readStatus === 'loading' ? 'Preparing natural voice…' : readStatus === 'reading' ? `Reading with ${narrationSource === 'elevenlabs' ? 'ElevenLabs' : 'device voice'} — Space to stop` : 'Press Space to read this page'}</span>
-      </button>
       <audio ref={audioRef} src={projectTracks[activeTrack]?.audioUrl} onEnded={() => setIsPlaying(false)} className="hidden" />
     </main>
   )
