@@ -64,7 +64,7 @@ const DRUM_COUNT_IN_BPM = 80
 const DRUM_BEAT_DURATION_MS = 60000 / DRUM_COUNT_IN_BPM
 const DRUM_LOOP_DURATION_MS = DRUM_BEAT_DURATION_MS * 4
 
-function playCountInBeat(isAccent: boolean, atTime?: number, isStartCue = false) {
+function playCountInBeat(isAccent: boolean, atTime?: number, isStartCue = false, isMetronomeClick = false) {
   const AudioContextClass = window.AudioContext
   if (!drumAudioContext || drumAudioContext.state === 'closed') {
     drumAudioContext = new AudioContextClass()
@@ -84,6 +84,10 @@ function playCountInBeat(isAccent: boolean, atTime?: number, isStartCue = false)
   gain.connect(context.destination)
   oscillator.start(startAt)
   oscillator.stop(startAt + duration)
+  if (isMetronomeClick) {
+    scheduledDrumMetronomeSources.add(oscillator)
+    oscillator.addEventListener('ended', () => scheduledDrumMetronomeSources.delete(oscillator), { once: true })
+  }
 }
 
 const starterTracks: Track[] = [
@@ -110,15 +114,44 @@ const drumPads = [
 ]
 
 let drumAudioContext: AudioContext | null = null
+const scheduledDrumLoopSources = new Set<AudioScheduledSourceNode>()
+const scheduledDrumMetronomeSources = new Set<AudioScheduledSourceNode>()
 
-function playDrumSound(id: string) {
+function trackDrumLoopSource(source: AudioScheduledSourceNode) {
+  scheduledDrumLoopSources.add(source)
+  source.addEventListener('ended', () => scheduledDrumLoopSources.delete(source), { once: true })
+}
+
+function stopScheduledDrumLoopSounds() {
+  for (const source of scheduledDrumLoopSources) {
+    try {
+      source.stop()
+    } catch {
+      // A source may already have ended between playback and cleanup.
+    }
+    scheduledDrumLoopSources.delete(source)
+  }
+}
+
+function stopScheduledDrumMetronomeSounds() {
+  for (const source of scheduledDrumMetronomeSources) {
+    try {
+      source.stop()
+    } catch {
+      // A source may already have ended between playback and cleanup.
+    }
+    scheduledDrumMetronomeSources.delete(source)
+  }
+}
+
+function playDrumSound(id: string, scheduledAt?: number, isLoopPlayback = false) {
   const AudioContextClass = window.AudioContext
   if (!drumAudioContext || drumAudioContext.state === 'closed') {
     drumAudioContext = new AudioContextClass()
   }
   const context = drumAudioContext
   if (context.state === 'suspended') void context.resume()
-  const now = context.currentTime
+  const now = scheduledAt ?? context.currentTime
   const gain = context.createGain()
   gain.connect(context.destination)
 
@@ -138,6 +171,7 @@ function playDrumSound(id: string) {
     oscillator.connect(gain)
     oscillator.start(now)
     oscillator.stop(now + settings.duration + 0.01)
+    if (isLoopPlayback) trackDrumLoopSource(oscillator)
     return
   }
 
@@ -158,6 +192,7 @@ function playDrumSound(id: string) {
   source.connect(filter)
   filter.connect(gain)
   source.start(now)
+  if (isLoopPlayback) trackDrumLoopSource(source)
 }
 
 export default function App() {
@@ -419,6 +454,7 @@ export default function App() {
     if (drumMetronomeTimerRef.current !== null) window.clearInterval(drumMetronomeTimerRef.current)
     drumMetronomeTimerRef.current = null
     nextDrumMetronomeBeatRef.current = null
+    stopScheduledDrumMetronomeSounds()
   }, [])
 
   const startDrumMetronome = useCallback((originMs: number, restart = false, clickOnOrigin = false) => {
@@ -440,7 +476,7 @@ export default function App() {
         const scheduledBeatMs = nextDrumMetronomeBeatRef.current
         if (scheduledBeatMs >= nowMs - beatDurationMs) {
           const audioTime = context.currentTime + Math.max(0, scheduledBeatMs - nowMs) / 1000
-          playCountInBeat(false, audioTime)
+          playCountInBeat(false, audioTime, false, true)
         }
         nextDrumMetronomeBeatRef.current = scheduledBeatMs + beatDurationMs
       }
@@ -454,6 +490,7 @@ export default function App() {
     }
     drumLoopHitTimersRef.current.forEach(timer => window.clearTimeout(timer))
     drumLoopHitTimersRef.current = []
+    stopScheduledDrumLoopSounds()
   }, [])
 
   const stopDrumLoop = useCallback(() => {
@@ -468,32 +505,40 @@ export default function App() {
   const startDrumLoop = useCallback(() => {
     if (drumLoopCycleTimerRef.current !== null) return
     clearDrumLoopTimers()
-    drumPlaybackOriginRef.current = window.performance.now()
-    const scheduleCycle = () => {
+    if (!drumAudioContext || drumAudioContext.state === 'closed') {
+      drumAudioContext = new window.AudioContext()
+    }
+    if (drumAudioContext.state === 'suspended') void drumAudioContext.resume()
+
+    const origin = window.performance.now() + 60
+    drumPlaybackOriginRef.current = origin
+    const scheduleCycle = (cycleNumber: number) => {
       drumLoopCycleTimerRef.current = null
-      drumLoopHitTimersRef.current.forEach(timer => window.clearTimeout(timer))
-      drumLoopHitTimersRef.current = []
-      const layers = drumLayersRef.current
-      const hits = layers.flatMap(layer => layer.hits)
+      const context = drumAudioContext
+      if (!context || context.state === 'closed' || drumPlaybackOriginRef.current === null) return
+
+      const cycleStart = origin + cycleNumber * DRUM_LOOP_DURATION_MS
       const now = window.performance.now()
-      const origin = drumPlaybackOriginRef.current ?? now
-      const elapsed = Math.max(0, now - origin)
-      const cycleStart = origin + Math.floor(elapsed / DRUM_LOOP_DURATION_MS) * DRUM_LOOP_DURATION_MS
-      const elapsedInCycle = now - cycleStart
-      drumLoopHitTimersRef.current = hits.flatMap(hit => {
-        const delay = hit.timeMs - elapsedInCycle
-        // If the browser timer woke up late, skip stale hits instead of firing them in a burst.
-        if (delay < -35) return []
-        return [window.setTimeout(() => playDrumSound(hit.id), Math.max(0, delay))]
-      })
+      const audioNow = context.currentTime
+      const hits = drumLayersRef.current.flatMap(layer => layer.hits)
+      for (const hit of hits) {
+        const eventTime = cycleStart + hit.timeMs
+        const delay = eventTime - now
+        // Ignore events the browser missed while busy; playing them late would create a burst.
+        if (delay < -15) continue
+        const audioTime = audioNow + Math.max(0, delay) / 1000
+        playDrumSound(hit.id, audioTime, true)
+      }
+
+      const nextCycleStart = origin + (cycleNumber + 1) * DRUM_LOOP_DURATION_MS
       drumLoopCycleTimerRef.current = window.setTimeout(
-        scheduleCycle,
-        Math.max(0, cycleStart + DRUM_LOOP_DURATION_MS - window.performance.now()),
+        () => scheduleCycle(cycleNumber + 1),
+        Math.max(0, nextCycleStart - 100 - window.performance.now()),
       )
     }
 
     setIsDrumLoopPlaying(true)
-    scheduleCycle()
+    scheduleCycle(0)
     setDrumStatus('Playback started. Completed layers are looping.')
   }, [clearDrumLoopTimers])
 
