@@ -437,7 +437,7 @@ export default function App() {
       const trackSummary = projectTracks.length
         ? projectTracks.map((track, index) => `${index === activeTrack ? 'Selected track' : 'Track'} ${index + 1}, ${track.name}, ${track.desc}.`)
         : ['This project has no tracks yet.']
-      narration = [`Project ${projectTitle}.`, `${projectTracks.length} tracks.`, ...trackSummary, 'Choose Add Track to create another musical part.']
+      narration = [`Project ${projectTitle}.`, `${projectTracks.length} tracks.`, ...trackSummary, 'Press A to add another track.']
     }
 
     const speakWithDeviceVoice = () => {
@@ -531,7 +531,7 @@ export default function App() {
 
   const announcePlaybackShortcut = useCallback(async () => {
     stopNarration()
-    const text = 'Press J to play the project.'
+    const text = 'Press J to play the project. Press A to add a track.'
     const speakWithDeviceVoice = () => {
       if (!('speechSynthesis' in window)) {
         setNarrationSource(null)
@@ -1292,15 +1292,22 @@ export default function App() {
   useEffect(() => {
     if (page !== 'project' || showDescribe) return
     const handleProjectPlaybackShortcut = (event: KeyboardEvent) => {
-      if (event.repeat || event.key.toLowerCase() !== 'j') return
+      if (event.repeat) return
       const target = event.target as HTMLElement | null
       if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      const key = event.key.toLowerCase()
+      if (key === 'a') {
+        event.preventDefault()
+        openDescribe()
+        return
+      }
+      if (key !== 'j') return
       event.preventDefault()
       if (!isPlaying) void togglePlayback().catch(() => {})
     }
     window.addEventListener('keydown', handleProjectPlaybackShortcut)
     return () => window.removeEventListener('keydown', handleProjectPlaybackShortcut)
-  }, [isPlaying, page, showDescribe, togglePlayback])
+  }, [isPlaying, openDescribe, page, showDescribe, togglePlayback])
 
   const timelineDurationMs = Math.max(
     DEFAULT_TRACK_DURATION_MS,
