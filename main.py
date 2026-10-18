@@ -62,3 +62,9 @@ for drum, drum_name in drums:
         for chunk in drum:
             file.write(chunk)
     print(f"Success! Audio saved to {output_filename}")
+
+#g key for play/pause
+#h key for new track
+def loop():
+    
+    
