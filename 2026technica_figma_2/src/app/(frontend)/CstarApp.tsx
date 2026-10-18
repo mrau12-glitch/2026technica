@@ -1750,6 +1750,7 @@ export default function App() {
                 )}
 
                 {trackType === 'vocals' && (
+                  <>
                 <div className={`mt-4 rounded-2xl border p-4 transition ${isRecording ? 'border-[#b54a40] bg-[#fff7f5]' : 'border-[#d7e8f0] bg-[#f3f9fc]'}`}>
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
                     <button onClick={() => setIsRecording(!isRecording)} aria-label={isRecording ? 'Stop recording' : 'Start recording'} className={`focus-ring grid h-14 w-14 shrink-0 place-items-center rounded-full text-white shadow-md ${isRecording ? 'bg-[#b54a40]' : 'bg-[#046492]'}`}><span className={isRecording ? 'h-4 w-4 rounded-sm bg-white' : ''}>{!isRecording && <Icon name="mic" size={22}/>}</span></button>
@@ -1761,6 +1762,7 @@ export default function App() {
                 </div>
 
                 <button onClick={() => setIsListening(!isListening)} className={`focus-ring mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl border font-bold ${isListening ? 'border-[#a5483d] bg-[#fff2ef] text-[#8c352c]' : 'border-[#b8d3df] text-[#075b83] hover:bg-[#eef8fc]'}`}><Icon name={isListening ? 'pause' : 'mic'} size={17}/>{isListening ? 'Listening — tap to stop' : 'Dictate the description instead'}</button>
+                  </>
                 )}
                 {generationError && <p role="alert" className="mt-4 rounded-xl bg-[#fff0ed] px-4 py-3 text-sm font-medium text-[#8f382f]">{generationError}</p>}
                 <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><button onClick={closeDescribe} disabled={isGenerating} className="focus-ring rounded-xl px-5 py-3 font-bold text-[#526f7d] hover:bg-[#eef7fb] disabled:cursor-not-allowed disabled:opacity-50">Cancel</button><button onClick={addTrack} disabled={isGenerating} className="focus-ring flex min-w-40 items-center justify-center gap-2 rounded-xl bg-[#046492] px-5 py-3 font-bold text-white hover:bg-[#03577f] disabled:cursor-wait disabled:opacity-70"><Icon name={trackType === 'drums' ? 'save' : 'sparkles'} size={18}/>{isGenerating ? (trackType === 'drums' ? 'Rendering…' : 'Generating…') : trackType === 'vocals' ? 'Add vocal track' : trackType === 'drums' ? 'Save Drum Track' : 'Generate with Eleven Music'}{!isGenerating && <kbd className="ml-1 rounded border border-white/40 px-1.5 py-0.5 font-mono text-[10px]">Shift+S</kbd>}</button></div>
