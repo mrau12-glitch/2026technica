@@ -435,7 +435,7 @@ export default function App() {
         'Press J to play or pause all tracks. Press A to add a track.',
       ]
     }
-    narration = ['Current section: ' + currentReaderSectionRef.current + '.', ...narration]
+    narration = ['Mouse is currently over ' + currentReaderSectionRef.current + '.', ...narration]
 
     const speakWithDeviceVoice = () => {
       if (!('speechSynthesis' in window)) {
@@ -1482,7 +1482,7 @@ export default function App() {
 
           <div className="mt-10 grid max-w-md gap-5">
             {projects.map(project => (
-              <button key={project.title} onClick={() => openProject(project.title)} className="focus-ring group overflow-hidden rounded-[22px] border border-[#d9dfdc] bg-white text-left shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
+              <button key={project.title} data-reader-section={project.title} onClick={() => openProject(project.title)} className="focus-ring group overflow-hidden rounded-[22px] border border-[#d9dfdc] bg-white text-left shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
                 <span className="wave-grid flex h-36 items-center justify-center gap-2 border-b border-[#d9dfdc] px-8" style={{ backgroundColor: project.color }}>
                   {[24, 46, 31, 62, 40, 72, 48, 57, 34, 64, 42, 28].map((height, i) => <i key={i} className="w-1.5 rounded-full bg-[#075b83]/70" style={{ height }}/>) }
                 </span>
