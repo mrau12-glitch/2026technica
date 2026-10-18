@@ -362,7 +362,8 @@ export default function App() {
   const narrationRequestRef = useRef<AbortController | null>(null)
   const narrationUrlRef = useRef<string | null>(null)
   const narrationPauseRef = useRef<number | null>(null)
-  const currentReaderSectionRef = useRef('page overview')
+  const currentMouseSectionRef = useRef('page overview')
+  const currentMousePositionRef = useRef<{ x: number; y: number } | null>(null)
   const drumLayersRef = useRef(drumLayers)
   const drumLoopCycleTimerRef = useRef<number | null>(null)
   const drumLoopHitTimersRef = useRef<number[]>([])
@@ -435,7 +436,14 @@ export default function App() {
         'Press J to play or pause all tracks. Press A to add a track.',
       ]
     }
-    narration = ['Mouse is currently over ' + currentReaderSectionRef.current + '.', ...narration]
+    const pointerPosition = currentMousePositionRef.current
+    if (pointerPosition) {
+      const elementUnderMouse = document.elementFromPoint(pointerPosition.x, pointerPosition.y)
+      const sectionUnderMouse = elementUnderMouse?.closest('[data-reader-section]')
+      const labelUnderMouse = sectionUnderMouse?.getAttribute('data-reader-section')
+      if (labelUnderMouse) currentMouseSectionRef.current = labelUnderMouse
+    }
+    narration = ['Mouse is currently over ' + currentMouseSectionRef.current + '.', ...narration]
 
     const speakWithDeviceVoice = () => {
       if (!('speechSynthesis' in window)) {
@@ -607,19 +615,16 @@ export default function App() {
   }, [readCurrentPage])
 
   useEffect(() => {
-    const updateReaderSection = (event: Event) => {
+    const updateMouseSection = (event: PointerEvent) => {
+      currentMousePositionRef.current = { x: event.clientX, y: event.clientY }
       const target = event.target
       if (!(target instanceof Element)) return
       const section = target.closest('[data-reader-section]')
       const label = section?.getAttribute('data-reader-section')
-      if (label) currentReaderSectionRef.current = label
+      if (label) currentMouseSectionRef.current = label
     }
-    document.addEventListener('pointermove', updateReaderSection, { passive: true })
-    document.addEventListener('focusin', updateReaderSection)
-    return () => {
-      document.removeEventListener('pointermove', updateReaderSection)
-      document.removeEventListener('focusin', updateReaderSection)
-    }
+    document.addEventListener('pointermove', updateMouseSection, { passive: true })
+    return () => document.removeEventListener('pointermove', updateMouseSection)
   }, [])
 
   useEffect(() => () => stopNarration(), [stopNarration])
