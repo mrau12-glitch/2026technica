@@ -345,6 +345,11 @@ export default function App() {
   const [readStatus, setReadStatus] = useState<'idle' | 'loading' | 'reading'>('idle')
   const [narrationSource, setNarrationSource] = useState<'elevenlabs' | 'device' | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
+  const projectAudioRefs = useRef<Map<number, HTMLAudioElement>>(new Map())
+  const playbackStartedAtRef = useRef(0)
+  const playbackCycleRef = useRef(0)
+  const isDraggingPlayheadRef = useRef(false)
+  const timelineCanvasRef = useRef<HTMLDivElement>(null)
   const audioFileInputRef = useRef<HTMLInputElement>(null)
   const audioRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
@@ -631,6 +636,7 @@ export default function App() {
   }
 
   const logOut = () => {
+    projectAudioRefs.current.forEach(audio => audio.pause())
     audioRef.current?.pause()
     setIsPlaying(false)
     setPage('home')
@@ -771,25 +777,38 @@ export default function App() {
     }
   }, [])
 
+  const projectLoopDurationMs = Math.max(
+    DEFAULT_TRACK_DURATION_MS,
+    ...projectTracks.map(track => track.durationMs ?? DEFAULT_TRACK_DURATION_MS),
+  )
+
+  const syncProjectAudio = (milliseconds: number, shouldPlay: boolean) => {
+    projectTracksRef.current.forEach((track, index) => {
+      const audio = projectAudioRefs.current.get(index)
+      if (!audio) return
+      audio.pause()
+      const trackDurationMs = track.durationMs ?? (Number.isFinite(audio.duration) ? audio.duration * 1000 : DEFAULT_TRACK_DURATION_MS)
+      if (milliseconds >= trackDurationMs) return
+      audio.currentTime = Math.max(0, milliseconds / 1000)
+      if (shouldPlay) void audio.play().catch(() => {})
+    })
+  }
+
   useEffect(() => {
     if (!isPlaying) return
-    const track = projectTracks[activeTrack]
-    const durationMs = track?.durationMs ?? DEFAULT_TRACK_DURATION_MS
+    const durationMs = Math.max(1, projectLoopDurationMs)
     const timer = window.setInterval(() => {
-      if (track?.audioUrl && audioRef.current) {
-        updatePlayhead(audioRef.current.currentTime * 1000)
-        return
+      const elapsed = Math.max(0, performance.now() - playbackStartedAtRef.current)
+      const cycle = Math.floor(elapsed / durationMs)
+      const currentTime = elapsed % durationMs
+      if (cycle !== playbackCycleRef.current) {
+        playbackCycleRef.current = cycle
+        syncProjectAudio(currentTime, true)
       }
-      const nextTime = playheadMsRef.current + 50
-      if (nextTime >= durationMs) {
-        updatePlayhead(durationMs)
-        setIsPlaying(false)
-      } else {
-        updatePlayhead(nextTime)
-      }
-    }, 50)
+      updatePlayhead(currentTime)
+    }, 30)
     return () => window.clearInterval(timer)
-  }, [isPlaying, activeTrack, projectTracks])
+  }, [isPlaying, projectLoopDurationMs, projectTracks])
 
   const stopDrumMetronome = useCallback(() => {
     if (drumMetronomeTimerRef.current !== null) window.clearInterval(drumMetronomeTimerRef.current)
@@ -1262,8 +1281,10 @@ export default function App() {
       durationMs: trackType === 'drums' ? DRUM_LOOP_DURATION_MS : trackType === 'melody' ? 30000 : undefined,
       drumLayers: trackType === 'drums' ? recordedLayers.map(layer => ({ ...layer, hits: [...layer.hits] })) : undefined,
     }
-    setProjectTracks([...projectTracks, newTrack])
-    setActiveTrack(projectTracks.length)
+    const updatedTracks = [...projectTracks, newTrack]
+    projectTracksRef.current = updatedTracks
+    setProjectTracks(updatedTracks)
+    setActiveTrack(updatedTracks.length - 1)
     setDescription('')
     setIsListening(false)
     setIsGenerating(false)
@@ -1271,21 +1292,36 @@ export default function App() {
     void announcePlaybackShortcut()
   }
 
-  const togglePlayback = async () => {
-    const activeTrackData = projectTracks[activeTrack]
-    const activeAudio = activeTrackData?.audioUrl
+  const startProjectPlayback = (startAtMs: number) => {
+    const startTime = startAtMs >= projectLoopDurationMs ? 0 : Math.max(0, startAtMs)
+    playbackStartedAtRef.current = performance.now() - startTime
+    playbackCycleRef.current = 0
+    updatePlayhead(startTime)
+    syncProjectAudio(startTime, true)
+    setIsPlaying(true)
+  }
+
+  const togglePlayback = () => {
     if (isPlaying) {
+      projectAudioRefs.current.forEach(audio => audio.pause())
       audioRef.current?.pause()
       setIsPlaying(false)
       return
     }
-    if (playheadMsRef.current >= (activeTrackData?.durationMs ?? DEFAULT_TRACK_DURATION_MS)) {
-      updatePlayhead(0)
-      if (audioRef.current) audioRef.current.currentTime = 0
-    }
-    if (activeAudio && audioRef.current) {
-      await audioRef.current.play()
-    }
+    startProjectPlayback(playheadMsRef.current)
+  }
+
+  const seekPlayheadAndPlay = (clientX: number) => {
+    const canvas = timelineCanvasRef.current
+    if (!canvas) return
+    const rect = canvas.getBoundingClientRect()
+    const timelineX = clientX - rect.left - 240
+    const rawTime = (timelineX / TIMELINE_PIXELS_PER_SECOND) * 1000
+    const targetTime = Math.min(Math.max(0, rawTime), Math.max(0, projectLoopDurationMs - 1))
+    playbackStartedAtRef.current = performance.now() - targetTime
+    playbackCycleRef.current = 0
+    updatePlayhead(targetTime)
+    syncProjectAudio(targetTime, true)
     setIsPlaying(true)
   }
 
@@ -1303,11 +1339,12 @@ export default function App() {
       }
       if (key !== 'j') return
       event.preventDefault()
-      void togglePlayback().catch(() => {})
+      if (isPlaying) togglePlayback()
+      else startProjectPlayback(0)
     }
     window.addEventListener('keydown', handleProjectPlaybackShortcut)
     return () => window.removeEventListener('keydown', handleProjectPlaybackShortcut)
-  }, [isPlaying, openDescribe, page, showDescribe, togglePlayback])
+  }, [isPlaying, openDescribe, page, showDescribe, startProjectPlayback, togglePlayback])
 
   const timelineDurationMs = Math.max(
     DEFAULT_TRACK_DURATION_MS,
