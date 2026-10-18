@@ -394,6 +394,7 @@ export default function App() {
   const drumCountInTimerRef = useRef<number | null>(null)
   const drumRecordingOriginRef = useRef<number | null>(null)
   const drumPlaybackOriginRef = useRef<number | null>(null)
+  const drumPlaybackOriginPerformanceRef = useRef<number | null>(null)
   const committedDrumLayerIdsRef = useRef<Set<number>>(new Set())
   const activeDrumLayerIdRef = useRef(1)
   const nextDrumLayerIdRef = useRef(2)
@@ -896,6 +897,7 @@ export default function App() {
     if (!isDrumRecordingRef.current) stopDrumMetronome()
     if (drumAudioContext?.state === 'running' && !isDrumRecordingRef.current) void drumAudioContext.suspend()
     drumPlaybackOriginRef.current = null
+    drumPlaybackOriginPerformanceRef.current = null
     setIsDrumLoopPlaying(false)
     setDrumStatus(isDrumRecordingRef.current ? 'Playback paused. Recording continues.' : 'Playback paused.')
   }, [clearDrumLoopTimers, stopDrumMetronome])
@@ -921,8 +923,11 @@ export default function App() {
       ) return
 
       // Keep the loop entirely on the audio clock; wall-clock timer jitter must not shift hit times.
-      const origin = context.currentTime + 0.06
+      const audioOrigin = context.currentTime
+      const performanceOrigin = window.performance.now()
+      const origin = audioOrigin + 0.06
       drumPlaybackOriginRef.current = origin
+      drumPlaybackOriginPerformanceRef.current = performanceOrigin + (origin - audioOrigin) * 1000
       const loopDurationSeconds = DRUM_LOOP_DURATION_MS / 1000
 
       const scheduleCycle = (cycleNumber: number) => {
@@ -1059,7 +1064,7 @@ export default function App() {
     const triggerAt = window.performance.now()
     // Ignore near-identical duplicate events for one pad while preserving quick hits on other pads.
     const lastTriggerAt = lastDrumTriggerAtRef.current.get(id)
-    if (lastTriggerAt !== undefined && triggerAt - lastTriggerAt < 40) return
+    if (lastTriggerAt !== undefined && triggerAt - lastTriggerAt < 70) return
     lastDrumTriggerAtRef.current.set(id, triggerAt)
     playDrumSound(id)
     setActiveDrum(id)
@@ -1072,9 +1077,8 @@ export default function App() {
     if (!isDrumRecordingRef.current || drumRecordingOriginRef.current === null) return
 
     setDrumSequence(sequence => [...sequence, pad.name])
-    const now = window.performance.now()
     const recordingLayerId = activeDrumLayerIdRef.current
-    const timeMs = Math.round((now - drumRecordingOriginRef.current) % DRUM_LOOP_DURATION_MS)
+    const timeMs = Math.round((triggerAt - drumRecordingOriginRef.current) % DRUM_LOOP_DURATION_MS)
     const hit = { id: pad.id, name: pad.name, timeMs: Math.max(0, timeMs) }
     setDrumLayers(layers => {
       const updatedLayers = layers.map(layer =>
@@ -1163,8 +1167,8 @@ export default function App() {
         isDrumCountInRef.current = false
         setIsDrumCountIn(false)
         const recordingOrigin =
-          playbackIsRunning && drumPlaybackOriginRef.current !== null
-            ? drumPlaybackOriginRef.current
+          playbackIsRunning && drumPlaybackOriginPerformanceRef.current !== null
+            ? drumPlaybackOriginPerformanceRef.current
             : window.performance.now()
         drumRecordingOriginRef.current = recordingOrigin
         playCountInBeat(false, undefined, true)
