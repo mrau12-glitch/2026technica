@@ -75,7 +75,7 @@ function getReaderLocation(target: Element | null) {
   if (control) {
     const explicitName = control.getAttribute('data-reader-section')
     const accessibleName = control.getAttribute('aria-label') || control.getAttribute('title')
-    const visibleName = (control as HTMLElement).innerText?.replace(/\\s+/g, ' ').trim()
+    const visibleName = (control as HTMLElement).innerText?.replace(/\s+/g, ' ').trim()
     const inputName = (control as HTMLInputElement).placeholder
     const name = explicitName || accessibleName || visibleName || inputName || control.tagName.toLowerCase()
     return control.matches('button, [role="button"]') ? name + ' button' :
