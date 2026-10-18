@@ -1,0 +1,90 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&family=Noto+Serif+SC:wght@600;700&display=swap');
+@import "tailwindcss";
+
+.figma-custom-code-fragment {
+  display: contents;
+}
+
+.figma-bypass-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 2147483647;
+  transform: translateY(-150%);
+  border-radius: 6px;
+  background: #111827;
+  color: #fff;
+  padding: 8px 12px;
+  font: 600 14px/1.2 system-ui, sans-serif;
+  text-decoration: none;
+}
+
+.figma-bypass-link:focus {
+  transform: translateY(0);
+}
+:root {
+  font-family: 'Noto Sans SC', sans-serif;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; }
+button, textarea { font: inherit; }
+button { cursor: pointer; }
+.font-serif { font-family: 'Noto Serif SC', serif; }
+.focus-ring:focus-visible { outline: 4px solid #ffd400; outline-offset: 3px; box-shadow: 0 0 0 2px #071c2b; }
+.wave-grid {
+  background-color: #fafcfb;
+  background-image: linear-gradient(to right, rgba(42, 101, 88, .08) 1px, transparent 1px);
+  background-size: 25% 100%;
+}
+.daw-grid {
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, .08) 1px, transparent 1px),
+    linear-gradient(to right, rgba(255, 255, 255, .025) 1px, transparent 1px);
+  background-size: 12.5% 100%, 3.125% 100%;
+}
+.playing-bar { animation: progress 8s linear infinite; transform-origin: left; }
+@keyframes progress { from { transform: scaleX(1); } to { transform: scaleX(4.2); } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+}
+
+.high-contrast {
+  background-color: #fff;
+  color: #071c2b;
+}
+
+.high-contrast [class*="text-[#607c89]"],
+.high-contrast [class*="text-[#6b8794]"],
+.high-contrast [class*="text-[#617e8b]"],
+.high-contrast [class*="text-[#526f7d]"] {
+  color: #294b5f;
+}
+
+.high-contrast [class*="border-[#d9dfdc]"],
+.high-contrast [class*="border-[#d7e8f0]"],
+.high-contrast [class*="border-[#b8d3df]"] {
+  border-color: #6f8d9c;
+}
+
+.high-contrast textarea {
+  border-width: 2px;
+  border-color: #557686;
+  background: #fff;
+  color: #071c2b;
+}
+
+.high-contrast button[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 2px currentColor;
+}
+
+@media (forced-colors: active) {
+  .focus-ring:focus-visible {
+    outline: 3px solid Highlight;
+    box-shadow: none;
+  }
+  button, textarea {
+    forced-color-adjust: auto;
+  }
+}
