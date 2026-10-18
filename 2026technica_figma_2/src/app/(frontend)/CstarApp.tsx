@@ -443,7 +443,7 @@ export default function App() {
         ]
       }
     } else if (page === 'home') {
-      narration = ['Music Projects page. From top to bottom: workspace heading and New music project button, then the Untitled Project card.']
+      narration = ['Music Projects page. From top to bottom: workspace heading and New music project button, then the Untitled Project card. Press A to create a new music project.']
     } else {
       const trackSummary = projectTracks.length
         ? ['Tracks from top to bottom: ' + projectTracks.map((track, index) => (index === activeTrack ? 'selected, ' : '') + track.name).join('; ') + '.']
@@ -1372,6 +1372,19 @@ export default function App() {
     syncProjectAudio(targetTime, true)
     setIsPlaying(true)
   }
+
+  useEffect(() => {
+    if (page !== 'home' || showDescribe) return
+    const handleHomeShortcut = (event: KeyboardEvent) => {
+      if (event.repeat || event.key.toLowerCase() !== 'a') return
+      const target = event.target as HTMLElement | null
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      event.preventDefault()
+      createProject()
+    }
+    window.addEventListener('keydown', handleHomeShortcut)
+    return () => window.removeEventListener('keydown', handleHomeShortcut)
+  }, [createProject, page, showDescribe])
 
   useEffect(() => {
     if (page !== 'project' || showDescribe) return
