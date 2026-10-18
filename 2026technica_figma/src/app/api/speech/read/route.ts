@@ -9,23 +9,6 @@ function setting(name: string, fallback: number) {
   return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : fallback
 }
 
-export async function GET() {
-  const voiceId = process.env.ELEVENLABS_VOICE_ID?.trim() || DEFAULT_VOICE_ID
-  const modelId = process.env.ELEVENLABS_MODEL_ID?.trim() || 'eleven_multilingual_v2'
-  const outputFormat = process.env.ELEVENLABS_OUTPUT_FORMAT?.trim() || 'mp3_44100_128'
-  const voiceSettings = {
-    stability: setting('ELEVENLABS_STABILITY', 0.5),
-    similarity_boost: setting('ELEVENLABS_SIMILARITY_BOOST', 0.75),
-    style: setting('ELEVENLABS_STYLE', 0),
-    use_speaker_boost: process.env.ELEVENLABS_USE_SPEAKER_BOOST !== 'false',
-  }
-
-  return Response.json(
-    { voiceId, modelId, outputFormat, voiceSettings },
-    { headers: { 'Cache-Control': 'no-store' } },
-  )
-}
-
 export async function POST(request: Request) {
   const apiKey = process.env.ELEVENLABS_API_KEY
   if (!apiKey) {
