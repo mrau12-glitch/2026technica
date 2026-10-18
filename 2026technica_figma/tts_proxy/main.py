@@ -76,7 +76,8 @@ async def speech(payload: SpeechRequest, request: Request):
     if not allowed_origin:
         raise HTTPException(status_code=403, detail="This origin is not allowed.")
 
-    client_ip = request.client.host if request.client else "unknown"
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    client_ip = forwarded_for.split(",", 1)[0].strip() if forwarded_for else (request.client.host if request.client else "unknown")
     check_rate_limit(client_ip)
 
     voice_id = os.getenv("ELEVENLABS_VOICE_ID", DEFAULT_VOICE_ID).strip() or DEFAULT_VOICE_ID
