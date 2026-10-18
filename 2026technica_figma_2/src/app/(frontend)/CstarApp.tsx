@@ -362,6 +362,7 @@ export default function App() {
   const narrationRequestRef = useRef<AbortController | null>(null)
   const narrationUrlRef = useRef<string | null>(null)
   const narrationPauseRef = useRef<number | null>(null)
+  const currentReaderSectionRef = useRef('page overview')
   const drumLayersRef = useRef(drumLayers)
   const drumLoopCycleTimerRef = useRef<number | null>(null)
   const drumLoopHitTimersRef = useRef<number[]>([])
@@ -401,51 +402,40 @@ export default function App() {
 
     let narration: string[]
     if (!currentUser) {
-      narration =
-        authMode === 'login'
-          ? ['Sign in to create.', 'Press the Sign in button to continue.', 'You can also continue with Google.', 'Email and password are optional in this demo.']
-          : ['Create your account.', 'Enter your name, email address, and a password with at least six characters.', 'Then press Create account.']
+      narration = authMode === 'login'
+        ? ['Sign-in page. From top to bottom: Google sign-in, email, password, Sign in, and Create account. On wide screens, the Cstar welcome panel is on the left.']
+        : ['Create-account page. From top to bottom: name, email, password, and Create account. On wide screens, the Cstar welcome panel is on the left.']
     } else if (showDescribe) {
       if (!trackType) {
-        narration = [
-          'Add a track.',
-          'Choose a track type.',
-          'Drums for beats, percussion, and rhythm.',
-          'Melodic Instrument for piano, strings, guitar, and more.',
-          'Or Vocals for singing, humming, and spoken voice.',
-        ]
+        narration = ['Add Track dialog. From left to right: Drums, Melodic Instrument, and Vocals. Choose a type to continue.']
       } else if (trackType === 'drums') {
+        const activeLayer = drumLayers.find(layer => layer.id === activeDrumLayerId)
         narration = [
-          'Create Drums.',
-          'Build a four-beat loop with four drum pads at 80 beats per minute.',
-          'Press A for Closed Hi-Hat.',
-          'S for Kick.',
-          'D for Snare.',
-          'F for Open Hi-Hat.',
-          'G plays or pauses all layers. H adds a layer. R starts or stops recording.',
-          'Press Shift plus S to save this drum track to the project.',
-          drumSequence.length ? `Your current pattern has ${drumSequence.length} hits across ${drumLayers.length} layers.` : 'Press R to hear a four-beat count-in. A higher tone signals recording start. The metronome continues during recording and stops when recording ends. Press R again to stop and commit the layer.',
+          'Drum editor. From top to bottom: layer controls, recording controls, then the pads. Pads from left to right: Closed Hi-Hat A, Kick S, Snare D, Open Hi-Hat F.',
+          'R starts or stops recording. G plays or pauses all layers. H adds a layer. Shift plus S saves the track.',
+          activeLayer?.hits.length
+            ? activeLayer.name + ' has ' + activeLayer.hits.length + ' hits. There are ' + drumLayers.length + ' layers.'
+            : (activeLayer?.name ?? 'The active layer') + ' is empty.',
         ]
       } else {
         narration = [
-          `Create ${trackType === 'melody' ? 'a Melodic Instrument' : 'Vocals'}.`,
-          'Describe the track in words or record a musical reference.',
-          generationError || (trackType === 'melody' ? 'Then generate it with Eleven Music.' : 'Then add the vocal track.'),
-          'Press Shift plus S to save this track to the project.',
+          (trackType === 'melody' ? 'Melodic Instrument' : 'Vocals') + ' editor. From top to bottom: description, reference recording, dictation, and save or generate.',
+          generationError || 'Shift plus S saves this track to the project.',
         ]
       }
     } else if (page === 'home') {
-      narration = [
-        'Music Projects.',
-        'One empty project is available.',
-        ...projects.map(project => project.title),
-      ]
+      narration = ['Music Projects page. From top to bottom: workspace heading and New music project button, then the Untitled Project card.']
     } else {
       const trackSummary = projectTracks.length
-        ? projectTracks.map((track, index) => `${index === activeTrack ? 'Selected track' : 'Track'} ${index + 1}, ${track.name}, ${track.desc}.`)
-        : ['This project has no tracks yet.']
-      narration = [`Project ${projectTitle}.`, `${projectTracks.length} tracks.`, ...trackSummary, 'Press J to play or pause the project. Press A to add another track.']
+        ? ['Tracks from top to bottom: ' + projectTracks.map((track, index) => (index === activeTrack ? 'selected, ' : '') + track.name).join('; ') + '.']
+        : ['No tracks yet.']
+      narration = [
+        'Project ' + projectTitle + '. From top to bottom: project controls, playback controls, timeline ruler, then tracks.',
+        ...trackSummary,
+        'Press J to play or pause all tracks. Press A to add a track.',
+      ]
     }
+    narration = ['Current section: ' + currentReaderSectionRef.current + '.', ...narration]
 
     const speakWithDeviceVoice = () => {
       if (!('speechSynthesis' in window)) {
@@ -615,6 +605,22 @@ export default function App() {
     window.addEventListener('keydown', handleReadShortcut)
     return () => window.removeEventListener('keydown', handleReadShortcut)
   }, [readCurrentPage])
+
+  useEffect(() => {
+    const updateReaderSection = (event: Event) => {
+      const target = event.target
+      if (!(target instanceof Element)) return
+      const section = target.closest('[data-reader-section]')
+      const label = section?.getAttribute('data-reader-section')
+      if (label) currentReaderSectionRef.current = label
+    }
+    document.addEventListener('pointermove', updateReaderSection, { passive: true })
+    document.addEventListener('focusin', updateReaderSection)
+    return () => {
+      document.removeEventListener('pointermove', updateReaderSection)
+      document.removeEventListener('focusin', updateReaderSection)
+    }
+  }, [])
 
   useEffect(() => () => stopNarration(), [stopNarration])
 
@@ -1379,10 +1385,10 @@ export default function App() {
 
   if (!currentUser) {
     return (
-      <main className="high-contrast min-h-screen bg-[#eaf5f9] text-[#071c2b]">
+      <main data-reader-section="Sign-in page" className="high-contrast min-h-screen bg-[#eaf5f9] text-[#071c2b]">
         <a href="#auth-form" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-3 focus:z-50 focus:rounded-lg focus:bg-white focus:px-4 focus:py-3">Skip to sign in</a>
         <div className="grid min-h-screen lg:grid-cols-[1.05fr_.95fr]">
-          <section className="relative hidden overflow-hidden bg-[#046492] p-12 text-white lg:flex lg:flex-col lg:justify-between">
+          <section data-reader-section="Cstar welcome panel" className="relative hidden overflow-hidden bg-[#046492] p-12 text-white lg:flex lg:flex-col lg:justify-between">
             <div aria-hidden="true" className="absolute -left-24 -top-24 h-72 w-72 rounded-full border-[48px] border-white/10"/>
             <div aria-hidden="true" className="absolute -bottom-32 -right-20 h-96 w-96 rounded-full bg-[#fb9b6d] opacity-90"/>
             <div className="relative flex items-center gap-4 text-left">
@@ -1412,7 +1418,7 @@ export default function App() {
 
               <div className="my-7 flex items-center gap-4" aria-hidden="true"><span className="h-px flex-1 bg-[#9bb1bb]"/><span className="text-xs font-bold uppercase tracking-widest text-[#526f7d]">or</span><span className="h-px flex-1 bg-[#9bb1bb]"/></div>
 
-              <form id="auth-form" onSubmit={submitAuth} noValidate>
+              <form id="auth-form" data-reader-section="Sign-in form" onSubmit={submitAuth} noValidate>
                 {authMode === 'signup' && (
                   <label className="mb-5 block font-bold" htmlFor="auth-name">
                     Name
@@ -1452,9 +1458,9 @@ export default function App() {
   }
 
   return (
-    <main className="high-contrast min-h-screen bg-white text-[#102a3a]">
+    <main data-reader-section={page === 'home' ? 'Music Projects page' : 'Project page'} className="high-contrast min-h-screen bg-white text-[#102a3a]">
       <a href="#content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-3 focus:z-[60] focus:rounded-lg focus:bg-white focus:px-4 focus:py-3">Skip to content</a>
-      <header className="flex h-[72px] items-center justify-between border-b border-[#d9dfdc] bg-white px-5 md:px-9">
+      <header data-reader-section="Cstar navigation and account" className="flex h-[72px] items-center justify-between border-b border-[#d9dfdc] bg-white px-5 md:px-9">
         <button onClick={() => setPage('home')} className="focus-ring flex items-center gap-3 rounded-xl text-left" aria-label="Go to projects home">
           <span className="grid h-14 w-14 place-items-center"><Image src="/cstar-logo.png" alt="" width={54} height={56} className="h-14 w-auto object-contain" unoptimized/></span>
           <strong className="font-serif block text-xl tracking-tight">Cstar</strong>
@@ -1468,7 +1474,7 @@ export default function App() {
       </header>
 
       {page === 'home' ? (
-        <section id="content" className="mx-auto max-w-[1240px] px-5 py-10 md:px-8 md:py-14">
+        <section id="content" data-reader-section="Music Projects list" className="mx-auto max-w-[1240px] px-5 py-10 md:px-8 md:py-14">
           <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
             <div><p className="mb-2 text-xs font-bold uppercase tracking-[.18em] text-[#046492]">Your workspace</p><h1 className="font-serif text-4xl font-bold tracking-tight md:text-5xl">Music Projects</h1></div>
             <button onClick={createProject} className="focus-ring flex h-12 items-center justify-center gap-2 rounded-xl bg-[#046492] px-5 font-bold text-white shadow-sm hover:bg-[#03577f]"><Icon name="plus" size={18}/> New music project</button>
@@ -1486,9 +1492,9 @@ export default function App() {
           </div>
         </section>
       ) : (
-        <section id="content" className="min-h-[calc(100vh-72px)] bg-[#17272f] p-3 text-[#f4f9fc] md:p-5">
+        <section id="content" data-reader-section="Project workspace" className="min-h-[calc(100vh-72px)] bg-[#17272f] p-3 text-[#f4f9fc] md:p-5">
           <div className="mx-auto max-w-[1500px] overflow-hidden rounded-xl border border-[#0d0f0e] bg-[#22333b] shadow-2xl">
-            <div className="flex min-h-14 items-center gap-3 border-b border-black/60 bg-[#263943] px-3 py-2 shadow-md md:px-4">
+            <div data-reader-section="Project controls" className="flex min-h-14 items-center gap-3 border-b border-black/60 bg-[#263943] px-3 py-2 shadow-md md:px-4">
               <button onClick={() => { if (isAudioRecording) stopAudioRecording(); projectAudioRefs.current.forEach(audio => audio.pause()); audioRef.current?.pause(); setPage('home'); setIsPlaying(false) }} className="focus-ring flex h-9 items-center gap-1 rounded-lg px-2 text-sm font-bold text-[#d8dfdb] hover:bg-white/10"><span className="rotate-180"><Icon name="chevron" size={17}/></span><span className="hidden sm:inline">Projects</span></button>
               <div className="h-6 w-px bg-white/10"/>
               <button onClick={openDescribe} className="focus-ring flex h-9 items-center gap-2 rounded-lg bg-[#e5f2f8] px-3 text-sm font-bold text-[#17272f] hover:bg-white"><Icon name="plus" size={16}/> Add Track</button>
@@ -1504,7 +1510,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex items-center justify-center gap-3 border-b border-black/60 bg-[#203039] px-3 py-3 md:gap-5">
+            <div data-reader-section="Playback controls" className="flex items-center justify-center gap-3 border-b border-black/60 bg-[#203039] px-3 py-3 md:gap-5">
               <button aria-label="Go to beginning" onClick={() => { projectAudioRefs.current.forEach(audio => { audio.pause(); audio.currentTime = 0 }); updatePlayhead(0); setIsPlaying(false) }} className="focus-ring grid h-9 w-9 place-items-center rounded-lg text-[#e5f2f8] hover:bg-white/10"><Icon name="skipBack" size={18}/></button>
               <button onClick={togglePlayback} aria-label={isPlaying ? 'Pause' : 'Play'} className="focus-ring grid h-11 w-11 place-items-center rounded-full bg-[#f1f4f2] text-[#123142] shadow-lg transition hover:scale-105"><Icon name={isPlaying ? 'pause' : 'play'} size={20}/></button>
               <button aria-label="Next section" className="focus-ring grid h-9 w-9 place-items-center rounded-lg text-[#e5f2f8] hover:bg-white/10"><Icon name="skipForward" size={18}/></button>
@@ -1517,7 +1523,7 @@ export default function App() {
             </div>
 
             {audioTrackStatus && <p role="status" aria-live="polite" className="border-b border-black/60 bg-[#263943] px-4 py-2 text-xs text-[#d8e7ec]">{audioTrackStatus}</p>}
-            <div className="overflow-x-auto">
+            <div data-reader-section="Timeline and track list" className="overflow-x-auto">
               <div className="min-w-[780px]" style={{ width: `${230 + timelineWidthPx + 20}px` }}>
                 <div className="grid border-b border-black/60 bg-[#1d2d35]" style={{ gridTemplateColumns: `230px ${timelineWidthPx + 20}px` }}>
                   <div className="flex items-center justify-between border-r border-black/60 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-[#9da8a3]"><span>Track controls</span><span>{projectTracks.length}</span></div>
@@ -1529,7 +1535,7 @@ export default function App() {
 
                 {projectTracks.length ? <div ref={timelineCanvasRef} className="relative" style={{ width: `${230 + timelineWidthPx + 20}px` }}>
                   {projectTracks.map((track, index) => (
-                    <div key={`${track.name}-${index}`} onClick={() => { projectAudioRefs.current.forEach(audio => audio.pause()); audioRef.current?.pause(); setIsPlaying(false); setActiveTrack(index); updatePlayhead(0) }} className={`grid border-b border-black/50 transition ${activeTrack === index ? 'bg-[#293f49]' : 'bg-[#263840] hover:bg-[#353a37]'}`} style={{ gridTemplateColumns: `230px ${timelineWidthPx + 20}px` }}>
+                    <div key={`${track.name}-${index}`} data-reader-section={`Track ${index + 1}: ${track.name}`} onClick={() => { projectAudioRefs.current.forEach(audio => audio.pause()); audioRef.current?.pause(); setIsPlaying(false); setActiveTrack(index); updatePlayhead(0) }} className={`grid border-b border-black/50 transition ${activeTrack === index ? 'bg-[#293f49]' : 'bg-[#263840] hover:bg-[#353a37]'}`} style={{ gridTemplateColumns: `230px ${timelineWidthPx + 20}px` }}>
                       <div className="flex h-[92px] items-center gap-3 border-r border-black/60 px-3">
                         <div className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-[#123f54] shadow-inner" style={{ background: track.color }}><Icon name={index === 0 ? 'play' : 'volume'} size={19}/></div>
                         <div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><strong className="truncate text-sm text-white">{track.name}</strong><span className="text-[10px] text-[#89a8b5]">{index + 1}</span></div><p className="mt-1 truncate text-[11px] text-[#9db2bc]">{track.desc}</p><div className="mt-2 flex items-center gap-1.5"><span className="grid h-5 w-5 place-items-center rounded bg-[#17272f] text-[9px] font-bold text-[#b9d0da]">M</span><span className="grid h-5 w-5 place-items-center rounded bg-[#17272f] text-[9px] font-bold text-[#b9d0da]">S</span><span className="ml-1 h-1 flex-1 rounded-full bg-[#102630]"><i className="block h-full w-3/5 rounded-full bg-[#79aabd]"/></span></div></div>
@@ -1603,7 +1609,7 @@ export default function App() {
 
       {showDescribe && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-[#0d1f19]/60 p-4 backdrop-blur-sm" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) closeDescribe() }} onKeyDown={(e) => { if (e.key === 'Escape') closeDescribe() }}>
-          <section role="dialog" aria-modal="true" aria-labelledby="describe-title" className="max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto rounded-[24px] border border-white/30 bg-white p-5 shadow-2xl md:p-7">
+          <section data-reader-section={trackType ? `${trackType} editor` : 'Track type choices'} role="dialog" aria-modal="true" aria-labelledby="describe-title" className="max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto rounded-[24px] border border-white/30 bg-white p-5 shadow-2xl md:p-7">
             <div className="flex items-start justify-between gap-5">
               <div>
                 <div className="mb-2 flex items-center gap-2 text-[#046492]"><Icon name="sparkles" size={18}/><span className="text-xs font-bold uppercase tracking-[.18em]">Add a track</span></div>
@@ -1669,7 +1675,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <div data-reader-section="Drum pads" className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                       {drumPads.map(pad => (
                         <button key={pad.id} type="button" aria-label={`${pad.name}, key ${pad.key === ';' ? 'semicolon' : pad.key}, ${drumLayers.find(layer => layer.id === activeDrumLayerId)?.hits.filter(hit => hit.id === pad.id).length || 0} hits in active layer`} onClick={() => triggerDrum(pad.id)} className={`focus-ring relative flex min-h-28 flex-col items-center justify-center rounded-2xl border-2 text-center transition active:scale-95 ${activeDrum === pad.id ? 'scale-95 border-[#046492] shadow-inner' : 'border-transparent shadow-sm hover:-translate-y-0.5'}`} style={{ backgroundColor: pad.color }}>
                           <kbd className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-md border border-black/15 bg-white/70 font-mono text-xs font-bold text-[#26342e]">{pad.key}</kbd>
