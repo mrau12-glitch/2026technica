@@ -1487,7 +1487,7 @@ export default function App() {
             </div>
 
             <div className="flex items-center justify-center gap-3 border-b border-black/60 bg-[#203039] px-3 py-3 md:gap-5">
-              <button aria-label="Go to beginning" onClick={() => { if (audioRef.current) audioRef.current.currentTime = 0; updatePlayhead(0); setIsPlaying(false) }} className="focus-ring grid h-9 w-9 place-items-center rounded-lg text-[#e5f2f8] hover:bg-white/10"><Icon name="skipBack" size={18}/></button>
+              <button aria-label="Go to beginning" onClick={() => { projectAudioRefs.current.forEach(audio => { audio.pause(); audio.currentTime = 0 }); updatePlayhead(0); setIsPlaying(false) }} className="focus-ring grid h-9 w-9 place-items-center rounded-lg text-[#e5f2f8] hover:bg-white/10"><Icon name="skipBack" size={18}/></button>
               <button onClick={togglePlayback} aria-label={isPlaying ? 'Pause' : 'Play'} className="focus-ring grid h-11 w-11 place-items-center rounded-full bg-[#f1f4f2] text-[#123142] shadow-lg transition hover:scale-105"><Icon name={isPlaying ? 'pause' : 'play'} size={20}/></button>
               <button aria-label="Next section" className="focus-ring grid h-9 w-9 place-items-center rounded-lg text-[#e5f2f8] hover:bg-white/10"><Icon name="skipForward" size={18}/></button>
               <div className="ml-2 grid grid-cols-3 divide-x divide-[#102630] overflow-hidden rounded-md border border-[#111512] bg-[#102630] font-mono shadow-inner">
@@ -1509,9 +1509,9 @@ export default function App() {
                   </div>
                 </div>
 
-                {projectTracks.length ? <div className="relative" style={{ width: `${230 + timelineWidthPx + 20}px` }}>
+                {projectTracks.length ? <div ref={timelineCanvasRef} className="relative" style={{ width: `${230 + timelineWidthPx + 20}px` }}>
                   {projectTracks.map((track, index) => (
-                    <div key={`${track.name}-${index}`} onClick={() => { audioRef.current?.pause(); if (audioRef.current) audioRef.current.currentTime = 0; setIsPlaying(false); setActiveTrack(index); updatePlayhead(0) }} className={`grid border-b border-black/50 transition ${activeTrack === index ? 'bg-[#293f49]' : 'bg-[#263840] hover:bg-[#353a37]'}`} style={{ gridTemplateColumns: `230px ${timelineWidthPx + 20}px` }}>
+                    <div key={`${track.name}-${index}`} onClick={() => { projectAudioRefs.current.forEach(audio => audio.pause()); audioRef.current?.pause(); setIsPlaying(false); setActiveTrack(index); updatePlayhead(0) }} className={`grid border-b border-black/50 transition ${activeTrack === index ? 'bg-[#293f49]' : 'bg-[#263840] hover:bg-[#353a37]'}`} style={{ gridTemplateColumns: `230px ${timelineWidthPx + 20}px` }}>
                       <div className="flex h-[92px] items-center gap-3 border-r border-black/60 px-3">
                         <div className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-[#123f54] shadow-inner" style={{ background: track.color }}><Icon name={index === 0 ? 'play' : 'volume'} size={19}/></div>
                         <div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><strong className="truncate text-sm text-white">{track.name}</strong><span className="text-[10px] text-[#89a8b5]">{index + 1}</span></div><p className="mt-1 truncate text-[11px] text-[#9db2bc]">{track.desc}</p><div className="mt-2 flex items-center gap-1.5"><span className="grid h-5 w-5 place-items-center rounded bg-[#17272f] text-[9px] font-bold text-[#b9d0da]">M</span><span className="grid h-5 w-5 place-items-center rounded bg-[#17272f] text-[9px] font-bold text-[#b9d0da]">S</span><span className="ml-1 h-1 flex-1 rounded-full bg-[#102630]"><i className="block h-full w-3/5 rounded-full bg-[#79aabd]"/></span></div></div>
@@ -1545,7 +1545,33 @@ export default function App() {
                       </div>
                     </div>
                   ))}
-                  <div className="pointer-events-none absolute inset-y-0 z-30 w-px bg-[#fb9b6d]" style={{ left: `${230 + 10 + (playheadMs / 1000) * TIMELINE_PIXELS_PER_SECOND}px` }}><i className="absolute -left-1 top-0 h-2 w-2 rotate-45 bg-[#fb9b6d]"/></div>
+                  <div
+                    role="slider"
+                    tabIndex={0}
+                    aria-label="Playback position"
+                    aria-valuemin={0}
+                    aria-valuemax={projectLoopDurationMs}
+                    aria-valuenow={playheadMs}
+                    onPointerDown={event => {
+                      event.preventDefault()
+                      isDraggingPlayheadRef.current = true
+                      event.currentTarget.setPointerCapture(event.pointerId)
+                      seekPlayheadAndPlay(event.clientX)
+                    }}
+                    onPointerMove={event => {
+                      if (isDraggingPlayheadRef.current) seekPlayheadAndPlay(event.clientX)
+                    }}
+                    onPointerUp={event => {
+                      isDraggingPlayheadRef.current = false
+                      event.currentTarget.releasePointerCapture(event.pointerId)
+                    }}
+                    onPointerCancel={() => { isDraggingPlayheadRef.current = false }}
+                    className="absolute inset-y-0 z-30 w-3 -translate-x-1/2 cursor-ew-resize touch-none"
+                    style={{ left: `${230 + 10 + (playheadMs / 1000) * TIMELINE_PIXELS_PER_SECOND}px` }}
+                  >
+                    <i className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-[#fb9b6d]"/>
+                    <i className="absolute left-1/2 top-0 h-2 w-2 -translate-x-1/2 rotate-45 bg-[#fb9b6d]"/>
+                  </div>
                 </div> : <div className="grid min-h-[390px] place-items-center bg-[#21323a] p-8 text-center"><div><span className="mx-auto grid h-14 w-14 place-items-center rounded-xl bg-[#263e4b] text-[#8fd9fb]"><Icon name="sparkles" size={24}/></span><h2 className="mt-4 text-xl font-bold text-white">Start with your first track</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#9db2bc]">Describe an instrument, mood, rhythm, or scene and Cstar will create an editable region.</p><button onClick={openDescribe} className="focus-ring mt-5 rounded-lg bg-[#e5f2f8] px-5 py-2.5 text-sm font-bold text-[#17272f] hover:bg-white">Describe your first track</button></div></div>}
 
                 {projectTracks.length > 0 && <button onClick={openDescribe} className="focus-ring flex h-12 w-[230px] items-center gap-2 border-r border-black/60 bg-[#24343c] px-4 text-xs font-bold text-[#b9d0da] hover:bg-[#293f49]"><span className="grid h-6 w-6 place-items-center rounded bg-[#17272f]"><Icon name="plus" size={14}/></span> Add another track</button>}
@@ -1674,7 +1700,22 @@ export default function App() {
         <span className={`grid h-9 w-9 place-items-center rounded-xl ${readStatus === 'reading' ? 'bg-[#fb9b6d] text-[#071c2b]' : 'bg-[#046492] text-white'}`}><Icon name={readStatus === 'reading' ? 'volume' : 'accessibility'} size={19}/></span>
         <span>{readStatus === 'loading' ? 'Preparing natural voice…' : readStatus === 'reading' ? `Reading with ${narrationSource === 'elevenlabs' ? 'ElevenLabs' : 'device voice'} — Space to stop` : 'Press Space to read this page'}</span>
       </button>
-      <audio ref={audioRef} src={projectTracks[activeTrack]?.audioUrl} onTimeUpdate={event => updatePlayhead(event.currentTarget.currentTime * 1000)} onEnded={event => { const track = projectTracks[activeTrack]; if (isPlaying && track?.drumLayers?.length) { event.currentTarget.currentTime = 0; updatePlayhead(0); void event.currentTarget.play().catch(() => setIsPlaying(false)); return } updatePlayhead(event.currentTarget.duration * 1000); setIsPlaying(false) }} className="hidden" />
+      {projectTracks.map((track, index) => track.audioUrl ? (
+        <audio
+          key={`project-track-audio-${index}`}
+          ref={element => {
+            if (element) {
+              projectAudioRefs.current.set(index, element)
+              if (index === activeTrack) audioRef.current = element
+            } else {
+              projectAudioRefs.current.delete(index)
+            }
+          }}
+          src={track.audioUrl}
+          preload="auto"
+          className="hidden"
+        />
+      ) : null)}
     </main>
   )
 }
