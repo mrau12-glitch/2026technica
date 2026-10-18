@@ -101,11 +101,6 @@ function playCountInBeat(isAccent: boolean, atTime?: number, isStartCue = false,
   }
 }
 
-const starterTracks: Track[] = [
-  { name: 'Piano', desc: 'Lead melody · Warm and gentle', color: '#a8d5d1', pattern: [18, 34, 24, 46, 27, 39, 21, 42, 30, 18, 35, 25] },
-  { name: 'Strings', desc: 'Harmony · Slow and spacious', color: '#c9bce7', pattern: [12, 20, 29, 24, 35, 42, 38, 27, 31, 40, 24, 18] },
-  { name: 'Double Bass', desc: 'Bass · Soft rhythm', color: '#fb9b6d', pattern: [35, 16, 32, 14, 38, 18, 34, 14, 28, 17, 34, 13] },
-]
 
 const projects = [
   { title: 'Untitled Project', mood: 'A blank space for your music', tracks: 0, duration: '0:00', color: '#dceff7', updated: 'New project' },
@@ -1336,7 +1331,7 @@ export default function App() {
           </div>
 
           <div className="mt-10 grid max-w-md gap-5">
-            {projects.map((project, index) => (
+            {projects.map(project => (
               <button key={project.title} onClick={() => openProject(project.title)} className="focus-ring group overflow-hidden rounded-[22px] border border-[#d9dfdc] bg-white text-left shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
                 <span className="wave-grid flex h-36 items-center justify-center gap-2 border-b border-[#d9dfdc] px-8" style={{ backgroundColor: project.color }}>
                   {[24, 46, 31, 62, 40, 72, 48, 57, 34, 64, 42, 28].map((height, i) => <i key={i} className="w-1.5 rounded-full bg-[#075b83]/70" style={{ height }}/>) }
