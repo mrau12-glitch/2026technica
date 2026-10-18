@@ -529,6 +529,74 @@ export default function App() {
     trackType,
   ])
 
+  const announcePlaybackShortcut = useCallback(async () => {
+    stopNarration()
+    const text = 'Press J to play the project.'
+    const speakWithDeviceVoice = () => {
+      if (!('speechSynthesis' in window)) {
+        setNarrationSource(null)
+        setReadStatus('idle')
+        return
+      }
+      const utterance = new SpeechSynthesisUtterance(text)
+      narrationRef.current = utterance
+      utterance.lang = 'en-US'
+      utterance.rate = 0.78
+      utterance.onend = () => {
+        if (narrationRef.current !== utterance) return
+        narrationRef.current = null
+        setNarrationSource(null)
+        setReadStatus('idle')
+      }
+      utterance.onerror = () => {
+        if (narrationRef.current === utterance) {
+          narrationRef.current = null
+          setNarrationSource(null)
+          setReadStatus('idle')
+        }
+      }
+      setNarrationSource('device')
+      setReadStatus('reading')
+      window.speechSynthesis.speak(utterance)
+    }
+
+    const controller = new AbortController()
+    narrationRequestRef.current = controller
+    setReadStatus('loading')
+    try {
+      const response = await fetch('/api/speech/read', {
+        method: 'POST',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+        signal: controller.signal,
+      })
+      if (!response.ok || !response.headers.get('content-type')?.startsWith('audio/')) {
+        speakWithDeviceVoice()
+        return
+      }
+
+      const audioUrl = URL.createObjectURL(await response.blob())
+      narrationUrlRef.current = audioUrl
+      const narrationAudio = new Audio(audioUrl)
+      narrationAudioRef.current = narrationAudio
+      narrationAudio.onended = stopNarration
+      narrationAudio.onerror = () => {
+        stopNarration()
+        speakWithDeviceVoice()
+      }
+      setNarrationSource('elevenlabs')
+      await narrationAudio.play()
+      setReadStatus('reading')
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      stopNarration()
+      speakWithDeviceVoice()
+    } finally {
+      if (narrationRequestRef.current === controller) narrationRequestRef.current = null
+    }
+  }, [stopNarration])
+
   useEffect(() => {
     const handleReadShortcut = (event: KeyboardEvent) => {
       if (event.code !== 'Space' || event.repeat) return
@@ -1200,6 +1268,7 @@ export default function App() {
     setIsListening(false)
     setIsGenerating(false)
     closeDescribe()
+    void announcePlaybackShortcut()
   }
 
   const togglePlayback = async () => {
@@ -1219,6 +1288,19 @@ export default function App() {
     }
     setIsPlaying(true)
   }
+
+  useEffect(() => {
+    if (page !== 'project' || showDescribe) return
+    const handleProjectPlaybackShortcut = (event: KeyboardEvent) => {
+      if (event.repeat || event.key.toLowerCase() !== 'j') return
+      const target = event.target as HTMLElement | null
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      event.preventDefault()
+      if (!isPlaying) void togglePlayback().catch(() => {})
+    }
+    window.addEventListener('keydown', handleProjectPlaybackShortcut)
+    return () => window.removeEventListener('keydown', handleProjectPlaybackShortcut)
+  }, [isPlaying, page, showDescribe, togglePlayback])
 
   const timelineDurationMs = Math.max(
     DEFAULT_TRACK_DURATION_MS,
