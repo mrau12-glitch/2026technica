@@ -1804,14 +1804,26 @@ export default function App() {
                             }
                             const recognition = new Recognition()
                             melodySpeechRecognitionRef.current = recognition
-                            recognition.lang = navigator.language || 'en-US'
-                            recognition.continuous = false
-                            recognition.interimResults = false
+                            // Keep dictation in English regardless of the visitor's browser language.
+                            recognition.lang = 'en-US'
+                            recognition.continuous = true
+                            recognition.interimResults = true
+                            recognition.maxAlternatives = 3
                             recognition.onresult = (event: any) => {
-                              const transcript = Array.from(event.results as any[]).map((result: any) => result[0]?.transcript || '').join(' ').trim()
+                              const finalParts: string[] = []
+                              for (let index = event.resultIndex; index < event.results.length; index++) {
+                                const result = event.results[index]
+                                if (!result.isFinal) continue
+                                const alternatives = Array.from(result as any) as any[]
+                                const best = alternatives.reduce((chosen, candidate) =>
+                                  (candidate.confidence ?? 0) > (chosen.confidence ?? 0) ? candidate : chosen
+                                , alternatives[0])
+                                if (best?.transcript) finalParts.push(best.transcript.trim())
+                              }
+                              const transcript = finalParts.join(' ').replace(/\\s+/g, ' ').trim()
                               if (transcript) {
                                 setDescription(current => `${current.trim()}${current.trim() ? ' ' : ''}${transcript}`)
-                                setMelodyDictationStatus('Speech was transcribed into the description.')
+                                setMelodyDictationStatus('English speech was transcribed into the description.')
                               }
                             }
                             recognition.onerror = (event: any) => {
