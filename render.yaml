@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: cstar-elevenlabs-tts
+    runtime: python
+    plan: free
+    rootDir: 2026technica_figma/tts_proxy
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: ELEVENLABS_VOICE_ID
+        value: IRHApOXLvnW57QJPQH2P
+      - key: ELEVENLABS_MODEL_ID
+        value: eleven_multilingual_v2
