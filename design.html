@@ -8,6 +8,12 @@
   const bass = new Audio("/sounds/bass.mp3");
   const shaker = new Audio("/sounds/shaker.mp3");
 
+  drums=[closed_hi_hat, kick, snare, low_tom, open_hi_hat, high_tom, bass, shaker]
+  Object.values(drums).forEach(audio => {
+    audio.preload = "auto";
+    audio.load();
+  });
+  
   let tracks = [
     { notes: [], loopIntervalId: null, loopTimeoutIds: [] }
   ];
@@ -38,22 +44,13 @@
       const firstNoteTime = track.notes[0].time;
       const lastNoteTime = track.notes[track.notes.length - 1].time;
       const dynamicDuration = Math.max(loopDuration, (lastNoteTime - firstNoteTime) + 500);
-
+  }
       function playNote(drumName) {
-          let sound;
-          if (drumName === "closed_hi_hat") sound = closed_hi_hat;
-          if (drumName === "kick") sound = kick;
-          if (drumName === "snare") sound = snare;
-          if (drumName === "low_tom") sound = low_tom;
-          if (drumName === "open_hi_hat") sound = open_hi_hat;
-          if (drumName === "high_tom") sound = high_tom;
-          if (drumName === "bass") sound = bass;
-          if (drumName === "shaker") sound = shaker;
+        const original = drums[drumName];
+        if (!original) return;
 
-          if (sound) {
-              const clone = sound.cloneNode();
-              clone.play().catch(() => {});
-          }
+        const sound = original.cloneNode();
+        sound.play().catch(console.error);
       }
 
       function scheduleNotes() {
@@ -70,7 +67,6 @@
           track.loopTimeoutIds = [];
           scheduleNotes();
       }, dynamicDuration);
-  }
 
   // Refreshes playback for all tracks simultaneously (used for play/pause toggles)
   function startAllTrackPlayback() {
@@ -85,7 +81,7 @@
   }
 
   function playAudio(audio, drumName) {
-      audio.play();
+      audio.play().catch(console.error);
 
       // Record specifically into the active track layer's notes array
       tracks[activeTrackIndex].notes.push({
@@ -97,8 +93,6 @@
 
       isPlaying = true;
       
-      // Only refresh the loop for the layer you are currently editing
-      startSingleTrackPlayback(activeTrackIndex);
   }
 
   function togglePlayPause() {
