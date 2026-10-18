@@ -47,9 +47,9 @@ export async function POST(request: Request) {
         text,
         model_id: process.env.ELEVENLABS_MODEL_ID?.trim() || 'eleven_multilingual_v2',
         voice_settings: {
-          stability: setting('ELEVENLABS_STABILITY', 0.42),
-          similarity_boost: setting('ELEVENLABS_SIMILARITY_BOOST', 0.82),
-          style: setting('ELEVENLABS_STYLE', 0.35),
+          stability: setting('ELEVENLABS_STABILITY', 0.5),
+          similarity_boost: setting('ELEVENLABS_SIMILARITY_BOOST', 0.75),
+          style: setting('ELEVENLABS_STYLE', 0),
           use_speaker_boost: process.env.ELEVENLABS_USE_SPEAKER_BOOST !== 'false',
         },
       }),
