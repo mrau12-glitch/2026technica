@@ -5,6 +5,10 @@ https://russet-tusk-13606100.figma.site
 
 ## About the project
 
+<p align="center">
+  <img src="2026technica_figma_2/public/cstar-logo.png" alt="Cstar logo" width="180">
+</p>
+
 Cstar Music is an accessible music-making workspace designed for blind and low-vision musicians. It brings voice guidance, recording, and track playback into one browser-based experience.
 
 The name, Cstar, comes from Seastar, an ocean animal that use their hands more than eyes to explore the world. We want to provide our human Seastar musicians to create music freely with all other senses.
