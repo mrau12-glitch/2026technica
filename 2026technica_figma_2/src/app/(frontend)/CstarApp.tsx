@@ -61,6 +61,27 @@ type DrumLayer = {
 const createInitialDrumLayers = (): DrumLayer[] => [{ id: 1, name: 'Layer 1', hits: [] }]
 
 const DRUM_LOOP_DURATION_MS = 4000
+const DRUM_COUNT_IN_BPM = 92
+
+function playCountInBeat(isAccent: boolean) {
+  const AudioContextClass = window.AudioContext
+  if (!drumAudioContext || drumAudioContext.state === 'closed') {
+    drumAudioContext = new AudioContextClass()
+  }
+  const context = drumAudioContext
+  if (context.state === 'suspended') void context.resume()
+  const oscillator = context.createOscillator()
+  const gain = context.createGain()
+  oscillator.type = 'triangle'
+  oscillator.frequency.setValueAtTime(isAccent ? 880 : 660, context.currentTime)
+  gain.gain.setValueAtTime(0.0001, context.currentTime)
+  gain.gain.exponentialRampToValueAtTime(isAccent ? 0.24 : 0.16, context.currentTime + 0.008)
+  gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.11)
+  oscillator.connect(gain)
+  gain.connect(context.destination)
+  oscillator.start(context.currentTime)
+  oscillator.stop(context.currentTime + 0.12)
+}
 
 const starterTracks: Track[] = [
   { name: 'Piano', desc: 'Lead melody · Warm and gentle', color: '#a8d5d1', pattern: [18, 34, 24, 46, 27, 39, 21, 42, 30, 18, 35, 25] },
@@ -160,6 +181,7 @@ export default function App() {
   const [activeDrumLayerId, setActiveDrumLayerId] = useState(1)
   const [isDrumLoopPlaying, setIsDrumLoopPlaying] = useState(false)
   const [isDrumRecording, setIsDrumRecording] = useState(false)
+  const [isDrumCountIn, setIsDrumCountIn] = useState(false)
   const [drumStatus, setDrumStatus] = useState('Ready to record Layer 1.')
   const [activeDrum, setActiveDrum] = useState<string | null>(null)
   const [readStatus, setReadStatus] = useState<'idle' | 'loading' | 'reading'>('idle')
@@ -175,6 +197,8 @@ export default function App() {
   const drumLoopHitTimersRef = useRef<number[]>([])
   const drumFlashTimerRef = useRef<number | null>(null)
   const isDrumRecordingRef = useRef(false)
+  const isDrumCountInRef = useRef(false)
+  const drumCountInTimerRef = useRef<number | null>(null)
   const drumRecordingOriginRef = useRef<number | null>(null)
   const drumPlaybackOriginRef = useRef<number | null>(null)
   const committedDrumLayerIdsRef = useRef<Set<number>>(new Set())
@@ -230,7 +254,7 @@ export default function App() {
           'L for Bass.',
           'Semicolon for Shaker.',
           'G plays or pauses all layers. H adds a layer. R starts or stops recording.',
-          drumSequence.length ? `Your current pattern has ${drumSequence.length} hits across ${drumLayers.length} layers.` : 'Press R once to start Layer 1. Press R again to stop and commit it.',
+          drumSequence.length ? `Your current pattern has ${drumSequence.length} hits across ${drumLayers.length} layers.` : 'Press R to hear a four-beat count-in, then recording starts. Press R again to stop and commit the layer.',
         ]
       } else {
         narration = [
@@ -539,7 +563,18 @@ export default function App() {
   }, [])
 
   const toggleDrumRecording = useCallback(() => {
+    const cancelCountIn = () => {
+      if (drumCountInTimerRef.current !== null) window.clearTimeout(drumCountInTimerRef.current)
+      drumCountInTimerRef.current = null
+      isDrumCountInRef.current = false
+      setIsDrumCountIn(false)
+    }
     const playbackIsRunning = drumLoopCycleTimerRef.current !== null
+    if (isDrumCountInRef.current) {
+      cancelCountIn()
+      setDrumStatus('Count-in cancelled. Press R to try again.')
+      return
+    }
     if (isDrumRecordingRef.current) {
       isDrumRecordingRef.current = false
       drumRecordingOriginRef.current = null
@@ -585,13 +620,35 @@ export default function App() {
     if (!recordingLayer) return
     activeDrumLayerIdRef.current = recordingLayer.id
     setActiveDrumLayerId(recordingLayer.id)
-    drumRecordingOriginRef.current =
-      playbackIsRunning && drumPlaybackOriginRef.current !== null
-        ? drumPlaybackOriginRef.current
-        : window.performance.now()
-    isDrumRecordingRef.current = true
-    setIsDrumRecording(true)
-    setDrumStatus(`Recording ${recordingLayer.name}. Press R again to stop and commit this layer.`)
+    isDrumCountInRef.current = true
+    setIsDrumCountIn(true)
+    setDrumStatus(`Count-in: 4 beats. Recording ${recordingLayer.name} starts after the count.`)
+
+    const beatDurationMs = 60000 / DRUM_COUNT_IN_BPM
+    const tick = (beat: number) => {
+      if (!isDrumCountInRef.current) return
+      playCountInBeat(beat === 4)
+      setDrumStatus(`Count-in: ${beat}.${beat === 1 ? ' Recording starts on the next beat.' : ''}`)
+      if (beat > 1) {
+        drumCountInTimerRef.current = window.setTimeout(() => tick(beat - 1), beatDurationMs)
+        return
+      }
+
+      drumCountInTimerRef.current = window.setTimeout(() => {
+        drumCountInTimerRef.current = null
+        isDrumCountInRef.current = false
+        setIsDrumCountIn(false)
+        drumRecordingOriginRef.current =
+          playbackIsRunning && drumPlaybackOriginRef.current !== null
+            ? drumPlaybackOriginRef.current
+            : window.performance.now()
+        isDrumRecordingRef.current = true
+        setIsDrumRecording(true)
+        setDrumStatus(`Recording ${recordingLayer.name}. Press R again to stop and commit this layer.`)
+      }, beatDurationMs)
+    }
+    playCountInBeat(true)
+    drumCountInTimerRef.current = window.setTimeout(() => tick(3), beatDurationMs)
   }, [startDrumLoop])
 
   useEffect(() => {
@@ -630,6 +687,10 @@ export default function App() {
   useEffect(() => {
     if (!showDescribe || trackType !== 'drums') {
       stopDrumLoop()
+      if (drumCountInTimerRef.current !== null) window.clearTimeout(drumCountInTimerRef.current)
+      drumCountInTimerRef.current = null
+      isDrumCountInRef.current = false
+      setIsDrumCountIn(false)
       isDrumRecordingRef.current = false
       drumRecordingOriginRef.current = null
       setIsDrumRecording(false)
@@ -638,6 +699,8 @@ export default function App() {
 
   useEffect(() => () => {
     clearDrumLoopTimers()
+    if (drumCountInTimerRef.current !== null) window.clearTimeout(drumCountInTimerRef.current)
+    isDrumCountInRef.current = false
     isDrumRecordingRef.current = false
     drumRecordingOriginRef.current = null
     if (drumFlashTimerRef.current !== null) window.clearTimeout(drumFlashTimerRef.current)
@@ -960,12 +1023,12 @@ export default function App() {
 
                     <div className="mt-3 grid gap-2 rounded-xl bg-[#eef7fb] p-3 sm:grid-cols-[1fr_auto] sm:items-center">
                       <div>
-                        <span className="block text-xs font-bold text-[#294b5f]">{isDrumRecording ? 'Recording' : 'Active'} {drumLayers.find(layer => layer.id === activeDrumLayerId)?.name}</span>
+                        <span className="block text-xs font-bold text-[#294b5f]">{isDrumRecording ? 'Recording' : isDrumCountIn ? 'Count-in' : 'Active'} {drumLayers.find(layer => layer.id === activeDrumLayerId)?.name}</span>
                         <span className="mt-1 block text-xs text-[#526f7d]" aria-live="polite" aria-atomic="true">{drumStatus}</span>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <button type="button" aria-pressed={isDrumRecording} onClick={toggleDrumRecording} className={`focus-ring rounded-lg px-3 py-2 text-xs font-bold ${isDrumRecording ? 'bg-[#fb9b6d] text-[#071c2b]' : 'bg-[#046492] text-white hover:bg-[#03577f]'}`}>
-                          {isDrumRecording ? 'Stop Recording' : 'Start Recording'} <kbd className="ml-1 rounded border border-current/40 px-1.5 py-0.5 font-mono text-[10px]">R</kbd>
+                        <button type="button" aria-pressed={isDrumRecording || isDrumCountIn} onClick={toggleDrumRecording} className={`focus-ring rounded-lg px-3 py-2 text-xs font-bold ${isDrumRecording ? 'bg-[#fb9b6d] text-[#071c2b]' : 'bg-[#046492] text-white hover:bg-[#03577f]'}`}>
+                          {isDrumRecording ? 'Stop Recording' : isDrumCountIn ? 'Cancel Count-in' : 'Start Recording'} <kbd className="ml-1 rounded border border-current/40 px-1.5 py-0.5 font-mono text-[10px]">R</kbd>
                         </button>
                       <button type="button" onClick={clearActiveDrumLayer} disabled={!drumLayers.find(layer => layer.id === activeDrumLayerId)?.hits.length} className="focus-ring rounded-lg px-2 py-1 text-xs font-bold text-[#526f7d] hover:bg-white disabled:cursor-not-allowed disabled:opacity-40">Clear active layer</button>
                       </div>
