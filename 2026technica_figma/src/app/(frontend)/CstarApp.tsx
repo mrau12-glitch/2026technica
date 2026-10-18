@@ -3,6 +3,8 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
 
+const TTS_PROXY_URL = process.env.NEXT_PUBLIC_TTS_PROXY_URL?.trim().replace(/\/+$/, '') || ''
+
 type IconName =
   | 'accessibility'
   | 'chevron'
@@ -240,7 +242,7 @@ export default function App() {
     setReadStatus('loading')
 
     try {
-      const response = await fetch('/api/speech/read', {
+      const response = await fetch(TTS_PROXY_URL ? `${TTS_PROXY_URL}/speech` : '/api/speech/read', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: narration.join(' ... ') }),
