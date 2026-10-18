@@ -336,7 +336,14 @@ export default function App() {
   const [isDrumCountIn, setIsDrumCountIn] = useState(false)
   const [drumStatus, setDrumStatus] = useState('Ready to record Layer 1.')
   const [activeDrum, setActiveDrum] = useState<string | null>(null)
+  const [readStatus, setReadStatus] = useState<'idle' | 'loading' | 'reading'>('idle')
+  const [narrationSource, setNarrationSource] = useState<'elevenlabs' | 'device' | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
+  const narrationRef = useRef<SpeechSynthesisUtterance | null>(null)
+  const narrationAudioRef = useRef<HTMLAudioElement | null>(null)
+  const narrationRequestRef = useRef<AbortController | null>(null)
+  const narrationUrlRef = useRef<string | null>(null)
+  const narrationPauseRef = useRef<number | null>(null)
   const drumLayersRef = useRef(drumLayers)
   const drumLoopCycleTimerRef = useRef<number | null>(null)
   const drumLoopHitTimersRef = useRef<number[]>([])
@@ -352,6 +359,177 @@ export default function App() {
   const committedDrumLayerIdsRef = useRef<Set<number>>(new Set())
   const activeDrumLayerIdRef = useRef(1)
   const nextDrumLayerIdRef = useRef(2)
+
+  const stopNarration = useCallback(() => {
+    narrationRequestRef.current?.abort()
+    narrationRequestRef.current = null
+    narrationAudioRef.current?.pause()
+    narrationAudioRef.current = null
+    window.speechSynthesis?.cancel()
+    if (narrationPauseRef.current !== null) window.clearTimeout(narrationPauseRef.current)
+    narrationPauseRef.current = null
+    narrationRef.current = null
+    if (narrationUrlRef.current) URL.revokeObjectURL(narrationUrlRef.current)
+    narrationUrlRef.current = null
+    setNarrationSource(null)
+    setReadStatus('idle')
+  }, [])
+
+  const readCurrentPage = useCallback(async () => {
+    if (readStatus === 'loading' || readStatus === 'reading') {
+      stopNarration()
+      return
+    }
+
+    let narration: string[]
+    if (!currentUser) {
+      narration =
+        authMode === 'login'
+          ? ['Sign in to create.', 'Press the Sign in button to continue.', 'You can also continue with Google.', 'Email and password are optional in this demo.']
+          : ['Create your account.', 'Enter your name, email address, and a password with at least six characters.', 'Then press Create account.']
+    } else if (showDescribe) {
+      if (!trackType) {
+        narration = [
+          'Add a track.',
+          'Choose a track type.',
+          'Drums for beats, percussion, and rhythm.',
+          'Melodic Instrument for piano, strings, guitar, and more.',
+          'Or Vocals for singing, humming, and spoken voice.',
+        ]
+      } else if (trackType === 'drums') {
+        narration = [
+          'Create Drums.',
+          'Build a four-beat loop with four drum pads at 80 beats per minute.',
+          'Press A for Closed Hi-Hat.',
+          'S for Kick.',
+          'D for Snare.',
+          'F for Open Hi-Hat.',
+          'G plays or pauses all layers. H adds a layer. R starts or stops recording.',
+          drumSequence.length ? `Your current pattern has ${drumSequence.length} hits across ${drumLayers.length} layers.` : 'Press R to hear a four-beat count-in. A higher tone signals recording start. The metronome continues during recording and stops when recording ends. Press R again to stop and commit the layer.',
+        ]
+      } else {
+        narration = [
+          `Create ${trackType === 'melody' ? 'a Melodic Instrument' : 'Vocals'}.`,
+          'Describe the track in words or record a musical reference.',
+          generationError || (trackType === 'melody' ? 'Then generate it with Eleven Music.' : 'Then add the vocal track.'),
+        ]
+      }
+    } else if (page === 'home') {
+      narration = [
+        'Music Projects.',
+        'Three project cards are arranged across the page.',
+        'From left to right.',
+        ...projects.map(project => project.title),
+      ]
+    } else {
+      const trackSummary = projectTracks.length
+        ? projectTracks.map((track, index) => `${index === activeTrack ? 'Selected track' : 'Track'} ${index + 1}, ${track.name}, ${track.desc}.`)
+        : ['This project has no tracks yet.']
+      narration = [`Project ${projectTitle}.`, `${projectTracks.length} tracks.`, ...trackSummary, 'Choose Add Track to create another musical part.']
+    }
+
+    const speakWithDeviceVoice = () => {
+      if (!('speechSynthesis' in window)) {
+        setNarrationSource(null)
+        setReadStatus('idle')
+        return
+      }
+      setNarrationSource('device')
+      setReadStatus('reading')
+      const speakPart = (index: number) => {
+        const utterance = new SpeechSynthesisUtterance(narration[index])
+        narrationRef.current = utterance
+        utterance.lang = 'en-US'
+        utterance.rate = 0.78
+        utterance.onend = () => {
+          if (narrationRef.current !== utterance) return
+          if (index === narration.length - 1) {
+            narrationRef.current = null
+            setNarrationSource(null)
+            setReadStatus('idle')
+            return
+          }
+          narrationPauseRef.current = window.setTimeout(() => speakPart(index + 1), 650)
+        }
+        utterance.onerror = () => {
+          if (narrationRef.current === utterance) {
+            narrationRef.current = null
+            setNarrationSource(null)
+            setReadStatus('idle')
+          }
+        }
+        window.speechSynthesis.speak(utterance)
+      }
+      window.speechSynthesis.cancel()
+      speakPart(0)
+    }
+
+    const controller = new AbortController()
+    narrationRequestRef.current = controller
+    setReadStatus('loading')
+
+    try {
+      const response = await fetch('/api/speech/read', {
+        method: 'POST',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: narration.join(' ... ') }),
+        signal: controller.signal,
+      })
+      if (!response.ok) throw new Error('ElevenLabs narration is unavailable.')
+      if (!response.headers.get('content-type')?.startsWith('audio/')) {
+        speakWithDeviceVoice()
+        return
+      }
+
+      const audioUrl = URL.createObjectURL(await response.blob())
+      narrationUrlRef.current = audioUrl
+      const narrationAudio = new Audio(audioUrl)
+      narrationAudioRef.current = narrationAudio
+      narrationAudio.onended = stopNarration
+      narrationAudio.onerror = () => {
+        stopNarration()
+        speakWithDeviceVoice()
+      }
+      setNarrationSource('elevenlabs')
+      await narrationAudio.play()
+      setReadStatus('reading')
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      stopNarration()
+      speakWithDeviceVoice()
+    } finally {
+      narrationRequestRef.current = null
+    }
+  }, [
+    activeTrack,
+    authMode,
+    currentUser,
+    drumSequence.length,
+    drumLayers.length,
+    generationError,
+    page,
+    projectTitle,
+    projectTracks,
+    readStatus,
+    showDescribe,
+    stopNarration,
+    trackType,
+  ])
+
+  useEffect(() => {
+    const handleReadShortcut = (event: KeyboardEvent) => {
+      if (event.code !== 'Space' || event.repeat) return
+      const target = event.target as HTMLElement | null
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      event.preventDefault()
+      void readCurrentPage()
+    }
+    window.addEventListener('keydown', handleReadShortcut)
+    return () => window.removeEventListener('keydown', handleReadShortcut)
+  }, [readCurrentPage])
+
+  useEffect(() => () => stopNarration(), [stopNarration])
 
   const completeMockLogin = (name: string) => {
     setCurrentUser(name.trim() || 'Musician')
@@ -934,6 +1112,10 @@ export default function App() {
             </div>
           </section>
         </div>
+        <button data-reader-ignore type="button" onClick={readCurrentPage} className="focus-ring fixed bottom-4 right-4 z-40 flex items-center gap-3 rounded-2xl border-2 border-[#046492] bg-white px-4 py-3 text-sm font-bold text-[#071c2b] shadow-xl hover:bg-[#eef7fb]" aria-label={readStatus === 'reading' ? 'Stop reading this page' : 'Read this page aloud'}>
+          <span className={`grid h-9 w-9 place-items-center rounded-xl ${readStatus === 'reading' ? 'bg-[#fb9b6d] text-[#071c2b]' : 'bg-[#046492] text-white'}`}><Icon name={readStatus === 'reading' ? 'volume' : 'accessibility'} size={19}/></span>
+          <span>{readStatus === 'loading' ? 'Preparing natural voice…' : readStatus === 'reading' ? `Reading with ${narrationSource === 'elevenlabs' ? 'ElevenLabs' : 'device voice'} — Space to stop` : 'Press Space to read this page'}</span>
+        </button>
       </main>
     )
   }
@@ -1146,6 +1328,10 @@ export default function App() {
           </section>
         </div>
       )}
+      <button data-reader-ignore type="button" onClick={readCurrentPage} className="focus-ring fixed bottom-4 right-4 z-40 flex items-center gap-3 rounded-2xl border-2 border-[#046492] bg-white px-4 py-3 text-sm font-bold text-[#071c2b] shadow-xl hover:bg-[#eef7fb]" aria-label={readStatus === 'reading' ? 'Stop reading this page' : 'Read this page aloud'}>
+        <span className={`grid h-9 w-9 place-items-center rounded-xl ${readStatus === 'reading' ? 'bg-[#fb9b6d] text-[#071c2b]' : 'bg-[#046492] text-white'}`}><Icon name={readStatus === 'reading' ? 'volume' : 'accessibility'} size={19}/></span>
+        <span>{readStatus === 'loading' ? 'Preparing natural voice…' : readStatus === 'reading' ? `Reading with ${narrationSource === 'elevenlabs' ? 'ElevenLabs' : 'device voice'} — Space to stop` : 'Press Space to read this page'}</span>
+      </button>
       <audio ref={audioRef} src={projectTracks[activeTrack]?.audioUrl} onEnded={() => setIsPlaying(false)} className="hidden" />
     </main>
   )
