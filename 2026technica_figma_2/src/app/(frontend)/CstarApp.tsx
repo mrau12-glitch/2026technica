@@ -106,11 +106,7 @@ const drumPads = [
   { id: 'closed_hi_hat', name: 'Closed Hi-Hat', key: 'A', eventKey: 'a', color: '#a8d5d1' },
   { id: 'kick', name: 'Kick', key: 'S', eventKey: 's', color: '#fb9b6d' },
   { id: 'snare', name: 'Snare', key: 'D', eventKey: 'd', color: '#d4c1eb' },
-  { id: 'low_tom', name: 'Low Tom', key: 'F', eventKey: 'f', color: '#b8cce7' },
-  { id: 'open_hi_hat', name: 'Open Hi-Hat', key: 'J', eventKey: 'j', color: '#9ed9cf' },
-  { id: 'high_tom', name: 'High Tom', key: 'K', eventKey: 'k', color: '#c9bce7' },
-  { id: 'bass', name: 'Bass', key: 'L', eventKey: 'l', color: '#f3c89c' },
-  { id: 'shaker', name: 'Shaker', key: ';', eventKey: ';', color: '#edc7c1' },
+  { id: 'open_hi_hat', name: 'Open Hi-Hat', key: 'F', eventKey: 'f', color: '#9ed9cf' },
 ]
 
 let drumAudioContext: AudioContext | null = null
@@ -309,15 +305,11 @@ export default function App() {
       } else if (trackType === 'drums') {
         narration = [
           'Create Drums.',
-          'Build a four-beat loop with eight drum pads at 80 beats per minute.',
+          'Build a four-beat loop with four drum pads at 80 beats per minute.',
           'Press A for Closed Hi-Hat.',
           'S for Kick.',
           'D for Snare.',
-          'F for Low Tom.',
-          'J for Open Hi-Hat.',
-          'K for High Tom.',
-          'L for Bass.',
-          'Semicolon for Shaker.',
+          'F for Open Hi-Hat.',
           'G plays or pauses all layers. H adds a layer. R starts or stops recording.',
           drumSequence.length ? `Your current pattern has ${drumSequence.length} hits across ${drumLayers.length} layers.` : 'Press R to hear a four-beat count-in. A higher tone signals recording start. The metronome continues during recording and stops when recording ends. Press R again to stop and commit the layer.',
         ]
@@ -1130,7 +1122,7 @@ export default function App() {
               <div>
                 <div className="mb-2 flex items-center gap-2 text-[#046492]"><Icon name="sparkles" size={18}/><span className="text-xs font-bold uppercase tracking-[.18em]">Add a track</span></div>
                 <h2 id="describe-title" className="font-serif text-3xl font-bold">{trackType ? `Create ${trackType === 'drums' ? 'Drums' : trackType === 'melody' ? 'a Melodic Instrument' : 'Vocals'}` : 'Choose a track type'}</h2>
-                <p className="mt-2 text-sm leading-6 text-[#607c89]">{trackType === 'drums' ? 'Build a four-beat loop at 80 beats per minute with eight keyboard pads and manually recorded layers.' : trackType ? 'Describe your idea in words or record a reference. You can use either option or both.' : 'What kind of sound would you like to add to this project?'}</p>
+                <p className="mt-2 text-sm leading-6 text-[#607c89]">{trackType === 'drums' ? 'Build a four-beat loop at 80 beats per minute with four keyboard pads and manually recorded layers.' : trackType ? 'Describe your idea in words or record a reference. You can use either option or both.' : 'What kind of sound would you like to add to this project?'}</p>
               </div>
               <button onClick={closeDescribe} aria-label="Close add track dialog" className="focus-ring grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#eef7fb] text-xl hover:bg-[#e1e8e4]">×</button>
             </div>
@@ -1207,7 +1199,7 @@ export default function App() {
                       ) : drumLayers.find(layer => layer.id === activeDrumLayerId)?.hits.length ? (
                         <p className="text-xs font-bold text-[#294b5f]">{drumLayers.find(layer => layer.id === activeDrumLayerId)?.hits.length} committed hits in this layer. Press R to record the next layer.</p>
                       ) : (
-                        <p className="text-xs text-[#526f7d]">{isDrumRecording ? 'Play A, S, D, F, J, K, L, or Semicolon to record the first hit.' : 'Pads are in audition mode. Press R to start recording; pad hits are not saved while recording is off.'}</p>
+                        <p className="text-xs text-[#526f7d]">{isDrumRecording ? 'Play A, S, D, or F to record the first hit.' : 'Pads are in audition mode. Press R to start recording; pad hits are not saved while recording is off.'}</p>
                       )}
                     </div>
                   </div>
