@@ -661,6 +661,8 @@ export default function App() {
     projectTracksRef.current = updatedTracks
     setProjectTracks(updatedTracks)
     setActiveTrack(updatedTracks.length - 1)
+    projectAudioRefs.current.forEach(audio => audio.pause())
+    setIsPlaying(false)
     updatePlayhead(0)
   }
 
@@ -777,10 +779,9 @@ export default function App() {
     }
   }, [])
 
-  const projectLoopDurationMs = Math.max(
-    DEFAULT_TRACK_DURATION_MS,
-    ...projectTracks.map(track => track.durationMs ?? DEFAULT_TRACK_DURATION_MS),
-  )
+  const projectLoopDurationMs = projectTracks.length
+    ? Math.max(...projectTracks.map(track => track.durationMs ?? DEFAULT_TRACK_DURATION_MS))
+    : DEFAULT_TRACK_DURATION_MS
 
   const syncProjectAudio = (milliseconds: number, shouldPlay: boolean) => {
     projectTracksRef.current.forEach((track, index) => {
@@ -1208,6 +1209,8 @@ export default function App() {
     projectTracksRef.current = []
     setActiveTrack(0)
     updatePlayhead(0)
+    projectAudioRefs.current.forEach(audio => audio.pause())
+    projectAudioRefs.current.forEach(audio => audio.pause())
     audioRef.current?.pause()
     setIsPlaying(false)
     setPage('project')
@@ -1471,7 +1474,7 @@ export default function App() {
         <section id="content" className="min-h-[calc(100vh-72px)] bg-[#17272f] p-3 text-[#f4f9fc] md:p-5">
           <div className="mx-auto max-w-[1500px] overflow-hidden rounded-xl border border-[#0d0f0e] bg-[#22333b] shadow-2xl">
             <div className="flex min-h-14 items-center gap-3 border-b border-black/60 bg-[#263943] px-3 py-2 shadow-md md:px-4">
-              <button onClick={() => { if (isAudioRecording) stopAudioRecording(); audioRef.current?.pause(); setPage('home'); setIsPlaying(false) }} className="focus-ring flex h-9 items-center gap-1 rounded-lg px-2 text-sm font-bold text-[#d8dfdb] hover:bg-white/10"><span className="rotate-180"><Icon name="chevron" size={17}/></span><span className="hidden sm:inline">Projects</span></button>
+              <button onClick={() => { if (isAudioRecording) stopAudioRecording(); projectAudioRefs.current.forEach(audio => audio.pause()); audioRef.current?.pause(); setPage('home'); setIsPlaying(false) }} className="focus-ring flex h-9 items-center gap-1 rounded-lg px-2 text-sm font-bold text-[#d8dfdb] hover:bg-white/10"><span className="rotate-180"><Icon name="chevron" size={17}/></span><span className="hidden sm:inline">Projects</span></button>
               <div className="h-6 w-px bg-white/10"/>
               <button onClick={openDescribe} className="focus-ring flex h-9 items-center gap-2 rounded-lg bg-[#e5f2f8] px-3 text-sm font-bold text-[#17272f] hover:bg-white"><Icon name="plus" size={16}/> Add Track</button>
               <input ref={audioFileInputRef} type="file" accept="audio/*" className="hidden" onChange={importAudioFile}/>
