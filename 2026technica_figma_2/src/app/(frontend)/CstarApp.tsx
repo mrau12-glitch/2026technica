@@ -639,7 +639,11 @@ export default function App() {
       if (label) currentMouseSectionRef.current = label
     }
     document.addEventListener('pointermove', updateMouseSection, { passive: true })
-    return () => document.removeEventListener('pointermove', updateMouseSection)
+    document.addEventListener('pointerover', updateMouseSection, { passive: true })
+    return () => {
+      document.removeEventListener('pointermove', updateMouseSection)
+      document.removeEventListener('pointerover', updateMouseSection)
+    }
   }, [])
 
   useEffect(() => () => stopNarration(), [stopNarration])
@@ -1646,7 +1650,7 @@ export default function App() {
                   { id: 'melody' as const, title: 'Melodic Instrument', detail: 'Piano, strings, guitar and more', icon: 'sparkles' as const, color: '#cfe8f3' },
                   { id: 'vocals' as const, title: 'Vocals', detail: 'Singing, humming and spoken voice', icon: 'mic' as const, color: '#ddd5ee' },
                 ].map(option => (
-                  <button key={option.id} autoFocus={option.id === 'drums'} onClick={() => setTrackType(option.id)} className="focus-ring group flex min-h-48 flex-col items-start rounded-2xl border border-[#d7e8f0] p-5 text-left transition hover:-translate-y-1 hover:border-[#046492] hover:shadow-lg">
+                  <button key={option.id} data-reader-section={option.title} autoFocus={option.id === 'drums'} onClick={() => setTrackType(option.id)} className="focus-ring group flex min-h-48 flex-col items-start rounded-2xl border border-[#d7e8f0] p-5 text-left transition hover:-translate-y-1 hover:border-[#046492] hover:shadow-lg">
                     <span className="grid h-12 w-12 place-items-center rounded-xl text-[#075b83]" style={{ backgroundColor: option.color }}><Icon name={option.icon} size={23}/></span>
                     <strong className="mt-5 text-lg">{option.title}</strong>
                     <span className="mt-2 text-sm leading-5 text-[#6d7973]">{option.detail}</span>
@@ -1658,7 +1662,7 @@ export default function App() {
               <>
                 <button onClick={() => { setTrackType(null); setIsRecording(false) }} className="focus-ring mt-5 flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm font-bold text-[#046492] hover:bg-[#e9f5fa]"><span className="rotate-180"><Icon name="chevron" size={16}/></span> Change track type</button>
                 {trackType === 'drums' ? (
-                  <div className="mt-4">
+                  <div data-reader-section="Drum editor controls and pads" className="mt-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
                         <span className="block text-sm font-bold">Beat layers</span>
@@ -1717,7 +1721,7 @@ export default function App() {
                   </div>
                 ) : (
                   <>
-                    <label htmlFor="track-description" className="mt-4 block text-sm font-bold">Describe the track</label>
+                    <label data-reader-section="Track description input" htmlFor="track-description" className="mt-4 block text-sm font-bold">Describe the track</label>
                     <textarea autoFocus id="track-description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder={trackType === 'melody' ? 'For example: A warm cello melody that rises gently in the second half...' : 'For example: A quiet wordless vocal harmony with a breathy tone...'} className="focus-ring mt-2 min-h-28 w-full resize-none rounded-2xl border border-[#cbd4d0] bg-[#fbfcfb] p-4 text-[15px] leading-7 outline-none focus:border-[#046492]"/>
                   </>
                 )}
