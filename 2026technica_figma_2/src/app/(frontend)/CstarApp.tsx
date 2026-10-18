@@ -437,10 +437,15 @@ export default function App() {
             : (activeLayer?.name ?? 'The active layer') + ' is empty.',
         ]
       } else {
-        narration = [
-          trackType === 'melody' ? 'Melodic Instrument. Describe the instrument, melody, and mood in one field, then choose Generate with Eleven Music.' : 'Vocals editor. From top to bottom: description, reference recording, dictation, and add vocal track.',
-          generationError || 'Shift plus S saves this track to the project.',
-        ]
+        narration = trackType === 'melody'
+          ? [
+              'Melodic Instrument. Describe the instrument, melody, and mood in one field.',
+              generationError || 'Press Generate with Eleven Music or Shift plus S. The generated melody will be added to the project.',
+            ]
+          : [
+              'Vocals editor. From top to bottom: description, reference recording, dictation, and add vocal track.',
+              generationError || 'Shift plus S saves this track to the project.',
+            ]
       }
     } else if (page === 'home') {
       narration = ['Music Projects page. From top to bottom: workspace heading and New music project button, then the Untitled Project card. Press A to create a new music project.']
