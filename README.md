@@ -1,16 +1,16 @@
-# Cstar — 2026 Technica
+# Cstar✨ 🌊 🎵 — 2026 Technica
 
 ## About the project
 
-Cstar is an accessible music-making workspace designed with blind and low-vision musicians in mind. It brings musical ideas, voice guidance, recording, and track playback into one browser-based experience.
+Cstar Music is an accessible music-making workspace designed for blind and low-vision musicians. It brings voice guidance, recording, and track playback into one browser-based experience.
 
-Our goal is to make creating music feel more direct and understandable: users should be able to explore the workspace through sound and keyboard interaction, then build a project one track at a time.
+The name, Cstar, comes from Seastar, an ocean animal that use their hands more than eyes to explore the world. We want to provide our human Seastar musicians to create music freely with all other senses.
 
 ## Why we started
 
-Many music tools communicate important information visually through timelines, controls, and editing panels. That can make it difficult for blind and low-vision musicians to understand where they are, what is available, and what will happen when they act.
+As music lovers, we could not imagine one day without music. The questions of how we could bring the same music experience to disable population is always in our hearts. Being a user ourselves for many music tools, we soon realized that most of them communicate important information visually. That can make it difficult for blind and low-vision musicians to understand where they are, what is available, and what will happen when they act.
 
-We started Cstar to explore a different approach: make the structure and state of a music workspace available through concise spoken guidance, clear keyboard controls, and audible feedback. Accessibility is part of the creative experience itself, rather than an extra feature added at the end.
+We started Cstar to explore a different approach. No cold, mechanical voice to read the page. Instead, users can hear guidance in a more natural voice powered by ElevenLabs. But our hope reaches beyond the sound of that voice, making music without sight should not feel like facing a screen alone. It should feel like a late-night talk with someone who understands your love of music. Warm, patient, and ready to help you turn an idea into a song.
 
 ## Design principles
 
@@ -40,6 +40,8 @@ We also worked through browser and platform differences in audio playback and te
 ## Where we hope to go next
 
 We want to keep improving the clarity and reliability of spoken navigation, refine the experience of recording and arranging multiple tracks, and test the workflow with blind and low-vision musicians. Their feedback should guide what we improve next.
+
+We are also considering transferring Cstar into a plugin on the most used music tools. The users could access to popular existing music tools and collaborate with other musicians with the help of Cstar.
 
 ## For judges and reviewers
 
