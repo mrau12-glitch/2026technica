@@ -13,6 +13,16 @@
   let loopIntervalId = null;
   const loopDuration = 4000;
 
+  // --- ADDED STATE TRACKER ---
+  let isPlaying = true; 
+
+  // --- ADDED FUNCTION TO STOP THE LOOP TIMERS ---
+  function stopLoopPlayback() {
+      loopTimeoutIds.forEach(id => clearTimeout(id));
+      loopTimeoutIds = [];
+      if (loopIntervalId) clearInterval(loopIntervalId);
+  }
+  
 function addToTrack(drumName) {
     const hit = {
         drum: drumName,
@@ -26,6 +36,8 @@ function addToTrack(drumName) {
 
  function startLoopPlayback() {
       // Clear any existing active playback loops/timeouts
+      stopLoopPlayback();
+      if (!isPlaying || currentTrack.length === 0) return;
       loopTimeoutIds.forEach(id => clearTimeout(id));
       loopTimeoutIds = [];
       if (loopIntervalId) clearInterval(loopIntervalId);
@@ -88,11 +100,35 @@ function addToTrack(drumName) {
       console.log("Current track:", currentTrack);
 
       // Refresh and update the loop scheduling whenever a change happens
+      isPlaying = true;
       startLoopPlayback();
+  }
+
+  function togglePlayPause() {
+      if (currentTrack.length === 0) {
+          console.log("Track is empty. Play a drum first to record something!");
+          return;
+      }
+      
+      isPlaying = !isPlaying;
+      
+      if (isPlaying) {
+          console.log("Playback Resumed");
+          startLoopPlayback();
+      } else {
+          console.log("Playback Paused");
+          stopLoopPlayback();
+      }
   }
   
 document.addEventListener("keydown", (event) => {
   if (event.repeat) return;
+
+  if (event.code === 'KeyG'){
+    event.preventDefault();
+    togglePlayPause();
+  }
+  
   if (event.code === 'KeyA'){
   event.preventDefault();
   closed_hi_hat.currentTime = 0;
