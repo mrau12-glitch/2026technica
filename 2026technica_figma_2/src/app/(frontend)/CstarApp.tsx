@@ -1398,7 +1398,7 @@ export default function App() {
                                 const hitHeight = hit.id === 'kick' ? 36 : hit.id === 'snare' ? 29 : hit.id === 'open_hi_hat' ? 23 : 17
                                 return (
                                   <i
-                                    key={`${layer.id}-${hitIndex}`}
+                                    key={`${hit.id}-${hit.timeMs}-${hitIndex}`}
                                     aria-hidden="true"
                                     className="absolute top-1/2 z-10 w-[3px] -translate-y-1/2 rounded-full bg-[#125474]/80"
                                     style={{
