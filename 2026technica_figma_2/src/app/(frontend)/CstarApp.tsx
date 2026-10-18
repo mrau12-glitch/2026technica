@@ -68,6 +68,24 @@ const DRUM_LOOP_DURATION_MS = DRUM_BEAT_DURATION_MS * 4
 const TIMELINE_PIXELS_PER_SECOND = 24
 const DEFAULT_TRACK_DURATION_MS = 30000
 
+function getReaderLocation(target: Element | null) {
+  if (!target) return null
+  const control = target.closest('button, a, [role="button"], [role="slider"], input, textarea, select')
+  if (control) {
+    const explicitName = control.getAttribute('data-reader-section')
+    const accessibleName = control.getAttribute('aria-label') || control.getAttribute('title')
+    const visibleName = (control as HTMLElement).innerText?.replace(/\\s+/g, ' ').trim()
+    const inputName = (control as HTMLInputElement).placeholder
+    const name = explicitName || accessibleName || visibleName || inputName || control.tagName.toLowerCase()
+    return control.matches('button, [role="button"]') ? name + ' button' :
+      control.matches('a') ? name + ' link' :
+      control.matches('[role="slider"]') ? name + ' slider' :
+      name
+  }
+  const section = target.closest('[data-reader-section]')
+  return section?.getAttribute('data-reader-section') ?? null
+}
+
 function formatTimelineTime(milliseconds: number) {
   const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000))
   const minutes = Math.floor(totalSeconds / 60)
@@ -439,8 +457,7 @@ export default function App() {
     const pointerPosition = currentMousePositionRef.current
     if (pointerPosition) {
       const elementUnderMouse = document.elementFromPoint(pointerPosition.x, pointerPosition.y)
-      const sectionUnderMouse = elementUnderMouse?.closest('[data-reader-section]')
-      const labelUnderMouse = sectionUnderMouse?.getAttribute('data-reader-section')
+      const labelUnderMouse = getReaderLocation(elementUnderMouse)
       if (labelUnderMouse) currentMouseSectionRef.current = labelUnderMouse
     }
     narration = ['Mouse is currently over ' + currentMouseSectionRef.current + '.', ...narration]
@@ -617,10 +634,8 @@ export default function App() {
   useEffect(() => {
     const updateMouseSection = (event: PointerEvent) => {
       currentMousePositionRef.current = { x: event.clientX, y: event.clientY }
-      const target = event.target
-      if (!(target instanceof Element)) return
-      const section = target.closest('[data-reader-section]')
-      const label = section?.getAttribute('data-reader-section')
+      if (!(event.target instanceof Element)) return
+      const label = getReaderLocation(event.target)
       if (label) currentMouseSectionRef.current = label
     }
     document.addEventListener('pointermove', updateMouseSection, { passive: true })
