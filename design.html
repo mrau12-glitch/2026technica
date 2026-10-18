@@ -13,50 +13,75 @@ document.addEventListener("keydown", (event) => {
   if (event.code === 'KeyA'){
   event.preventDefault();
   closed_hi_hat.currentTime = 0;
-  closed_hi_hat.play();
+  playAudio(closed_hi_hat, "closed_hi_hat");
   }
 
   if (event.code === 'KeyS'){
   event.preventDefault();
   kick.currentTime = 0;
-  kick.play();
+  playAudio(kick, "kick");
   }
 
   if (event.code === 'KeyD'){
   event.preventDefault();
   snare.currentTime = 0;
-  snare.play();
+  playAudio(snare, "snare");
   }
 
   if (event.code === 'KeyF'){
   event.preventDefault();
   low_tom.currentTime = 0;
-  low_tom.play();
+  playAudio(low_tom, "low_tom");
   }
 
   if (event.code === 'KeyJ'){
   event.preventDefault();
   open_hi_hat.currentTime = 0;
-  open_hi_hat.play();
+  playAudio(open_hi_hat, "open_hi_hat");
   }
 
   if (event.code === 'KeyK'){
   event.preventDefault();
   high_tom.currentTime = 0;
-  high_tom.play();
+  playAudio(high_tom, "high_tom");
   }
 
   if (event.code === 'KeyL'){
   event.preventDefault();
   bass.currentTime = 0;
-  bass.play();
+  playAudio(bass, "bass");
   }
 
   if (event.code === 'Semicolon'){
   event.preventDefault();
   shaker.currentTime = 0;
-  shaker.play();
+  playAudio(shaker, "shaker");
   }
-  
+
+  let currentTrack = [];
+
+function addToTrack(drumName) {
+    const hit = {
+        drum: drumName,
+        time: audioContext.currentTime
+    };
+
+    currentTrack.push(hit);
+
+    console.log("Added to track:", hit);
+}
+
+function playAudio(audio, drumName) {
+    // Play the audio
+    audio.play();
+
+    // Record this hit in the current track
+    currentTrack.push({
+        drum: drumName,
+        time: performance.now()
+    });
+
+    console.log("Current track:", currentTrack);
+}
 });
 </script>
