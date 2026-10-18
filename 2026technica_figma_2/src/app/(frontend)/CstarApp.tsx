@@ -63,7 +63,6 @@ const createInitialDrumLayers = (): DrumLayer[] => [{ id: 1, name: 'Layer 1', hi
 const DRUM_COUNT_IN_BPM = 80
 const DRUM_BEAT_DURATION_MS = 60000 / DRUM_COUNT_IN_BPM
 const DRUM_LOOP_DURATION_MS = DRUM_BEAT_DURATION_MS * 4
-const DRUM_AUTOPLAY_GAP_MS = 700
 
 function playCountInBeat(isAccent: boolean, atTime?: number, isStartCue = false, isMetronomeClick = false) {
   const AudioContextClass = window.AudioContext
@@ -503,7 +502,7 @@ export default function App() {
     setDrumStatus(isDrumRecordingRef.current ? 'Playback paused. Recording continues.' : 'Playback paused.')
   }, [clearDrumLoopTimers, stopDrumMetronome])
 
-  const startDrumLoop = useCallback((afterRecording = false) => {
+  const startDrumLoop = useCallback(() => {
     if (drumLoopCycleTimerRef.current !== null) return
     clearDrumLoopTimers()
     if (!drumAudioContext || drumAudioContext.state === 'closed') {
@@ -511,12 +510,7 @@ export default function App() {
     }
     if (drumAudioContext.state === 'suspended') void drumAudioContext.resume()
 
-    const now = window.performance.now()
-    const recordedHits = drumLayersRef.current.flatMap(layer => layer.hits)
-    const earliestHitMs = recordedHits.length ? Math.min(...recordedHits.map(hit => hit.timeMs)) : 0
-    const origin = afterRecording
-      ? now + DRUM_AUTOPLAY_GAP_MS - earliestHitMs
-      : now + 60
+    const origin = window.performance.now() + 60
     drumPlaybackOriginRef.current = origin
     const scheduleCycle = (cycleNumber: number) => {
       drumLoopCycleTimerRef.current = null
@@ -690,7 +684,7 @@ export default function App() {
       const hitCount = committedLayer?.hits.length || 0
       if (committedLayer) committedDrumLayerIdsRef.current.add(committedLayer.id)
       if (committedLayer?.id === 1 && hitCount > 0 && !playbackIsRunning) {
-        startDrumLoop(true)
+        startDrumLoop()
         setDrumStatus(`${layerName} stopped and committed with ${hitCount} hits. Layer 1 playback started and is looping.`)
       } else {
         setDrumStatus(`${layerName} stopped and committed with ${hitCount} hits.${playbackIsRunning ? ' Existing playback continues.' : ''}`)
