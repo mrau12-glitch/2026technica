@@ -454,8 +454,8 @@ export default function App() {
               generationError || 'Press Generate with Eleven Music or Shift plus S to create a melody from the text description.',
             ]
           : [
-              'Voice Recording. Record spoken, sung, or other audio with the Record Sound button. The finished recording is added to the project as a track.',
-              audioTrackStatus || 'Choose Record Sound to begin. Choose Stop Recording to finish and add the audio track.',
+              'Voice Recording. Press R or choose Record Sound to start and stop recording. The finished recording is added to the project as a track.',
+              audioTrackStatus || 'Press R or choose Record Sound to begin. Press R again or choose Stop Recording to add the audio track.',
             ]
       }
     } else if (page === 'home') {
@@ -1214,7 +1214,7 @@ export default function App() {
   }, [startDrumLoop, stopDrumLoop, stopDrumMetronome])
 
   useEffect(() => {
-    if (!showDescribe || (trackType !== 'drums' && trackType !== 'melody')) return
+    if (!showDescribe || (trackType !== 'drums' && trackType !== 'melody' && trackType !== 'vocals')) return
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.repeat) return
       const target = event.target as HTMLElement | null
@@ -1222,6 +1222,12 @@ export default function App() {
       if (event.key.toLowerCase() === 'r' && trackType === 'melody') {
         event.preventDefault()
         document.querySelector<HTMLButtonElement>('[data-reader-section="Dictate melody description"]')?.click()
+        return
+      }
+      if (event.key.toLowerCase() === 'r' && trackType === 'vocals') {
+        event.preventDefault()
+        if (isAudioRecording) stopAudioRecording()
+        else void startAudioRecording()
         return
       }
       if (trackType !== 'drums') return
@@ -1873,9 +1879,9 @@ export default function App() {
                     <h3 className="text-sm font-bold">Voice Recording</h3>
                     <p className="mt-1 text-sm leading-6 text-[#607c89]">Record a spoken, sung, or instrumental idea. When you stop, the recording is added to this project as an audio track.</p>
                     <button type="button" data-reader-section="Record sound" aria-pressed={isAudioRecording} onClick={() => isAudioRecording ? stopAudioRecording() : void startAudioRecording()} className={`focus-ring mt-4 flex h-11 items-center gap-2 rounded-xl px-4 text-sm font-bold ${isAudioRecording ? 'bg-[#fb9b6d] text-[#17272f]' : 'bg-[#046492] text-white hover:bg-[#03577f]'}`}>
-                      <Icon name={isAudioRecording ? 'pause' : 'mic'} size={17}/>{isAudioRecording ? `Stop Recording · ${formatTimelineTime(audioRecordingMs)}` : 'Record Sound'}
+                      <Icon name={isAudioRecording ? 'pause' : 'mic'} size={17}/>{isAudioRecording ? `Stop Recording · ${formatTimelineTime(audioRecordingMs)}` : 'Record Sound'} <kbd className="rounded border border-current/40 px-1.5 py-0.5 font-mono text-[10px]">R</kbd>
                     </button>
-                    <p className="mt-2 text-xs leading-5 text-[#526f7d]" aria-live="polite" aria-atomic="true">{audioTrackStatus || 'Microphone audio will be saved as a new track when recording stops.'}</p>
+                    <p className="mt-2 text-xs leading-5 text-[#526f7d]" aria-live="polite" aria-atomic="true">{audioTrackStatus || 'Press R or choose Record Sound to start. Press R again to stop and save the audio track.'}</p>
                   </section>
                 )}
 
