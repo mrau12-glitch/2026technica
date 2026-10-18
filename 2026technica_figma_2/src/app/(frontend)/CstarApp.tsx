@@ -1434,7 +1434,7 @@ export default function App() {
             </div>
             <div className="relative max-w-xl pb-16">
               <span className="mb-7 grid h-16 w-16 place-items-center rounded-2xl bg-white/15"><Icon name="accessibility" size={31}/></span>
-              <h1 className="font-serif text-5xl font-bold leading-[1.08] tracking-tight xl:text-6xl">Compose without barriers.</h1>
+              <h2 className="font-serif text-5xl font-bold leading-[1.08] tracking-tight xl:text-6xl">Compose without barriers.</h2>
               <div className="mt-10 flex items-center gap-3 text-sm font-bold"><span className="h-1.5 w-12 rounded-full bg-[#fb9b6d]"/><span>Hands as eyes, sounds as light</span></div>
             </div>
           </section>
@@ -1446,7 +1446,7 @@ export default function App() {
                 <strong className="font-serif block text-2xl">Cstar</strong>
               </div>
               <p className="text-xs font-bold uppercase tracking-[.2em] text-[#046492]">{authMode === 'login' ? 'Welcome back' : 'Join Cstar'}</p>
-              <h2 className="font-serif mt-3 text-4xl font-bold tracking-tight">{authMode === 'login' ? 'Sign in to create' : 'Create your account'}</h2>
+              <h1 className="font-serif mt-3 text-4xl font-bold tracking-tight">{authMode === 'login' ? 'Sign in to create' : 'Create your account'}</h1>
 
               <button type="button" onClick={() => completeMockLogin('Google Musician')} className="focus-ring mt-8 flex h-13 w-full items-center justify-center gap-3 rounded-xl border-2 border-[#6f8d9c] bg-white px-5 font-bold text-[#071c2b] transition hover:bg-[#eef7fb]">
                 <span aria-hidden="true" className="grid h-6 w-6 place-items-center rounded-full bg-[conic-gradient(from_-45deg,#4285f4_0_25%,#34a853_0_50%,#fbbc05_0_75%,#ea4335_0)] text-xs font-black text-white">G</span>
@@ -1486,7 +1486,7 @@ export default function App() {
             </div>
           </section>
         </div>
-        <button data-reader-ignore type="button" onClick={readCurrentPage} className="focus-ring fixed bottom-4 right-4 z-40 flex items-center gap-3 rounded-2xl border-2 border-[#046492] bg-white px-4 py-3 text-sm font-bold text-[#071c2b] shadow-xl hover:bg-[#eef7fb]" aria-label={readStatus === 'reading' ? 'Stop reading this page' : 'Read this page aloud'}>
+        <button data-reader-ignore type="button" onClick={readCurrentPage} className="focus-ring fixed bottom-4 right-4 z-40 flex items-center gap-3 rounded-2xl border-2 border-[#046492] bg-white px-4 py-3 text-sm font-bold text-[#071c2b] shadow-xl hover:bg-[#eef7fb]">
           <span className={`grid h-9 w-9 place-items-center rounded-xl ${readStatus === 'reading' ? 'bg-[#fb9b6d] text-[#071c2b]' : 'bg-[#046492] text-white'}`}><Icon name={readStatus === 'reading' ? 'volume' : 'accessibility'} size={19}/></span>
           <span>{readStatus === 'loading' ? 'Preparing natural voice…' : readStatus === 'reading' ? `Reading with ${narrationSource === 'elevenlabs' ? 'ElevenLabs' : 'device voice'} — Space to stop` : 'Press Space to read this page'}</span>
         </button>
@@ -1757,7 +1757,7 @@ export default function App() {
           </section>
         </div>
       )}
-      <button data-reader-ignore type="button" onClick={readCurrentPage} className="focus-ring fixed bottom-4 right-4 z-40 flex items-center gap-3 rounded-2xl border-2 border-[#046492] bg-white px-4 py-3 text-sm font-bold text-[#071c2b] shadow-xl hover:bg-[#eef7fb]" aria-label={readStatus === 'reading' ? 'Stop reading this page' : 'Read this page aloud'}>
+      <button data-reader-ignore type="button" onClick={readCurrentPage} className="focus-ring fixed bottom-4 right-4 z-40 flex items-center gap-3 rounded-2xl border-2 border-[#046492] bg-white px-4 py-3 text-sm font-bold text-[#071c2b] shadow-xl hover:bg-[#eef7fb]">
         <span className={`grid h-9 w-9 place-items-center rounded-xl ${readStatus === 'reading' ? 'bg-[#fb9b6d] text-[#071c2b]' : 'bg-[#046492] text-white'}`}><Icon name={readStatus === 'reading' ? 'volume' : 'accessibility'} size={19}/></span>
         <span>{readStatus === 'loading' ? 'Preparing natural voice…' : readStatus === 'reading' ? `Reading with ${narrationSource === 'elevenlabs' ? 'ElevenLabs' : 'device voice'} — Space to stop` : 'Press Space to read this page'}</span>
       </button>
