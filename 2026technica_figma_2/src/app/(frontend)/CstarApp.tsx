@@ -44,6 +44,7 @@ type Track = {
   color: string
   pattern: number[]
   audioUrl?: string
+  durationMs?: number
   drumLayers?: DrumLayer[]
 }
 
@@ -64,6 +65,15 @@ const createInitialDrumLayers = (): DrumLayer[] => [{ id: 1, name: 'Layer 1', hi
 const DRUM_COUNT_IN_BPM = 80
 const DRUM_BEAT_DURATION_MS = 60000 / DRUM_COUNT_IN_BPM
 const DRUM_LOOP_DURATION_MS = DRUM_BEAT_DURATION_MS * 4
+const TIMELINE_PIXELS_PER_SECOND = 24
+const DEFAULT_TRACK_DURATION_MS = 30000
+
+function formatTimelineTime(milliseconds: number) {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+}
 
 function playCountInBeat(isAccent: boolean, atTime?: number, isStartCue = false, isMetronomeClick = false) {
   const AudioContextClass = window.AudioContext
@@ -322,6 +332,10 @@ export default function App() {
   const [projectTracks, setProjectTracks] = useState<Track[]>(starterTracks)
   const [activeTrack, setActiveTrack] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
+  const [playheadMs, setPlayheadMs] = useState(0)
+  const [isAudioRecording, setIsAudioRecording] = useState(false)
+  const [audioRecordingMs, setAudioRecordingMs] = useState(0)
+  const [audioTrackStatus, setAudioTrackStatus] = useState('')
   const [showDescribe, setShowDescribe] = useState(false)
   const [isListening, setIsListening] = useState(false)
   const [description, setDescription] = useState('')
@@ -340,6 +354,13 @@ export default function App() {
   const [readStatus, setReadStatus] = useState<'idle' | 'loading' | 'reading'>('idle')
   const [narrationSource, setNarrationSource] = useState<'elevenlabs' | 'device' | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
+  const audioFileInputRef = useRef<HTMLInputElement>(null)
+  const audioRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const audioRecordingStartedAtRef = useRef<number | null>(null)
+  const audioRecordingTimerRef = useRef<number | null>(null)
+  const playheadMsRef = useRef(0)
+  const projectTracksRef = useRef(projectTracks)
   const narrationRef = useRef<SpeechSynthesisUtterance | null>(null)
   const narrationAudioRef = useRef<HTMLAudioElement | null>(null)
   const narrationRequestRef = useRef<AbortController | null>(null)
@@ -561,6 +582,156 @@ export default function App() {
   useEffect(() => {
     drumLayersRef.current = drumLayers
   }, [drumLayers])
+  useEffect(() => {
+    projectTracksRef.current = projectTracks
+  }, [projectTracks])
+
+  const updatePlayhead = useCallback((milliseconds: number) => {
+    const nextTime = Math.max(0, milliseconds)
+    playheadMsRef.current = nextTime
+    setPlayheadMs(nextTime)
+  }, [])
+
+  const appendAudioTrack = (track: Track) => {
+    const updatedTracks = [...projectTracksRef.current, track]
+    projectTracksRef.current = updatedTracks
+    setProjectTracks(updatedTracks)
+    setActiveTrack(updatedTracks.length - 1)
+    updatePlayhead(0)
+  }
+
+  const importAudioFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0]
+    event.currentTarget.value = ''
+    if (!file) return
+    if (!file.type.startsWith('audio/')) {
+      setAudioTrackStatus('Choose an audio file to import.')
+      return
+    }
+
+    const audioUrl = URL.createObjectURL(file)
+    const probe = new Audio()
+    probe.preload = 'metadata'
+    probe.onloadedmetadata = () => {
+      if (!Number.isFinite(probe.duration) || probe.duration <= 0) {
+        URL.revokeObjectURL(audioUrl)
+        setAudioTrackStatus('Could not read the duration of this audio file.')
+        return
+      }
+      const durationMs = Math.round(probe.duration * 1000)
+      appendAudioTrack({
+        name: file.name.replace(/\.[^.]+$/, '') || 'Imported Audio',
+        desc: `Imported audio · ${formatTimelineTime(durationMs)}`,
+        color: '#a8d5d1',
+        pattern: [15, 28, 42, 22, 35, 18, 46, 26, 38, 20, 31, 17],
+        audioUrl,
+        durationMs,
+      })
+      setAudioTrackStatus(`Imported ${file.name} · ${formatTimelineTime(durationMs)}.`)
+    }
+    probe.onerror = () => {
+      URL.revokeObjectURL(audioUrl)
+      setAudioTrackStatus('This audio file could not be opened.')
+    }
+    probe.src = audioUrl
+  }
+
+  const stopAudioRecording = () => {
+    const recorder = audioRecorderRef.current
+    if (audioRecordingTimerRef.current !== null) {
+      window.clearInterval(audioRecordingTimerRef.current)
+      audioRecordingTimerRef.current = null
+    }
+    if (recorder?.state === 'recording') {
+      setAudioTrackStatus('Finishing audio recording…')
+      recorder.stop()
+    }
+    setIsAudioRecording(false)
+  }
+
+  const startAudioRecording = async () => {
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setAudioTrackStatus('Microphone recording is not supported in this browser.')
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : undefined
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
+      audioRecorderRef.current = recorder
+      audioChunksRef.current = []
+      setAudioRecordingMs(0)
+      audioRecordingStartedAtRef.current = window.performance.now()
+      recorder.ondataavailable = event => {
+        if (event.data.size) audioChunksRef.current.push(event.data)
+      }
+      recorder.onstop = () => {
+        stream.getTracks().forEach(track => track.stop())
+        const startedAt = audioRecordingStartedAtRef.current
+        const durationMs = Math.max(300, Math.round(startedAt === null ? audioRecordingMs : window.performance.now() - startedAt))
+        const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' })
+        audioChunksRef.current = []
+        audioRecorderRef.current = null
+        audioRecordingStartedAtRef.current = null
+        if (!blob.size) {
+          setAudioTrackStatus('No audio was captured. Check microphone permission and try again.')
+          return
+        }
+        const audioUrl = URL.createObjectURL(blob)
+        const takeNumber = projectTracksRef.current.filter(track => track.desc.startsWith('Microphone recording')).length + 1
+        appendAudioTrack({
+          name: `Recording ${takeNumber}`,
+          desc: `Microphone recording · ${formatTimelineTime(durationMs)}`,
+          color: '#fb9b6d',
+          pattern: [18, 34, 24, 46, 27, 39, 21, 42, 30, 18, 35, 25],
+          audioUrl,
+          durationMs,
+        })
+        setAudioTrackStatus(`Recording saved · ${formatTimelineTime(durationMs)}.`)
+      }
+      recorder.start(250)
+      setIsAudioRecording(true)
+      setAudioTrackStatus('Recording from microphone. Press Stop recording when finished.')
+      audioRecordingTimerRef.current = window.setInterval(() => {
+        const startedAt = audioRecordingStartedAtRef.current
+        if (startedAt !== null) setAudioRecordingMs(window.performance.now() - startedAt)
+      }, 100)
+    } catch {
+      setAudioTrackStatus('Microphone access was denied or unavailable. Allow microphone access and try again.')
+    }
+  }
+
+  useEffect(() => () => {
+    if (audioRecordingTimerRef.current !== null) window.clearInterval(audioRecordingTimerRef.current)
+    const recorder = audioRecorderRef.current
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.onstop = null
+      recorder.stream.getTracks().forEach(track => track.stop())
+      recorder.stop()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isPlaying) return
+    const track = projectTracks[activeTrack]
+    const durationMs = track?.durationMs ?? DEFAULT_TRACK_DURATION_MS
+    const timer = window.setInterval(() => {
+      if (track?.audioUrl && audioRef.current) {
+        updatePlayhead(audioRef.current.currentTime * 1000)
+        return
+      }
+      const nextTime = playheadMsRef.current + 50
+      if (nextTime >= durationMs) {
+        updatePlayhead(durationMs)
+        setIsPlaying(false)
+      } else {
+        updatePlayhead(nextTime)
+      }
+    }, 50)
+    return () => window.clearInterval(timer)
+  }, [isPlaying, activeTrack, projectTracks])
 
   const stopDrumMetronome = useCallback(() => {
     if (drumMetronomeTimerRef.current !== null) window.clearInterval(drumMetronomeTimerRef.current)
@@ -1021,6 +1192,7 @@ export default function App() {
       color: ['#8fcde8', '#b9d9e8', '#fb9b6d', '#c9e4f0'][projectTracks.length % 4],
       pattern: [22, 38, 18, 44, 30, 25, 42, 19, 35, 28, 40, 20],
       audioUrl,
+      durationMs: trackType === 'drums' || trackType === 'melody' ? 30000 : undefined,
       drumLayers: trackType === 'drums' ? recordedLayers.map(layer => ({ ...layer, hits: [...layer.hits] })) : undefined,
     }
     setProjectTracks([...projectTracks, newTrack])
@@ -1032,20 +1204,35 @@ export default function App() {
   }
 
   const togglePlayback = async () => {
-    const activeAudio = projectTracks[activeTrack]?.audioUrl
-    if (!activeAudio || !audioRef.current) {
-      setIsPlaying(!isPlaying)
+    const activeTrackData = projectTracks[activeTrack]
+    const activeAudio = activeTrackData?.audioUrl
+    if (isPlaying) {
+      audioRef.current?.pause()
+      setIsPlaying(false)
       return
     }
-
-    if (isPlaying) {
-      audioRef.current.pause()
-      setIsPlaying(false)
-    } else {
-      await audioRef.current.play()
-      setIsPlaying(true)
+    if (playheadMsRef.current >= (activeTrackData?.durationMs ?? DEFAULT_TRACK_DURATION_MS)) {
+      updatePlayhead(0)
+      if (audioRef.current) audioRef.current.currentTime = 0
     }
+    if (activeAudio && audioRef.current) {
+      await audioRef.current.play()
+    }
+    setIsPlaying(true)
   }
+
+  const timelineDurationMs = Math.max(
+    DEFAULT_TRACK_DURATION_MS,
+    ...projectTracks.map(track => track.durationMs ?? DEFAULT_TRACK_DURATION_MS),
+  )
+  const timelineWidthPx = Math.max(
+    550,
+    Math.ceil((timelineDurationMs / 1000) * TIMELINE_PIXELS_PER_SECOND),
+  )
+  const rulerMarks = Array.from(
+    { length: Math.floor(timelineDurationMs / 5000) + 1 },
+    (_, index) => index * 5,
+  )
 
   if (!currentUser) {
     return (
@@ -1159,9 +1346,14 @@ export default function App() {
         <section id="content" className="min-h-[calc(100vh-72px)] bg-[#17272f] p-3 text-[#f4f9fc] md:p-5">
           <div className="mx-auto max-w-[1500px] overflow-hidden rounded-xl border border-[#0d0f0e] bg-[#22333b] shadow-2xl">
             <div className="flex min-h-14 items-center gap-3 border-b border-black/60 bg-[#263943] px-3 py-2 shadow-md md:px-4">
-              <button onClick={() => { setPage('home'); setIsPlaying(false) }} className="focus-ring flex h-9 items-center gap-1 rounded-lg px-2 text-sm font-bold text-[#d8dfdb] hover:bg-white/10"><span className="rotate-180"><Icon name="chevron" size={17}/></span><span className="hidden sm:inline">Projects</span></button>
+              <button onClick={() => { if (isAudioRecording) stopAudioRecording(); audioRef.current?.pause(); setPage('home'); setIsPlaying(false) }} className="focus-ring flex h-9 items-center gap-1 rounded-lg px-2 text-sm font-bold text-[#d8dfdb] hover:bg-white/10"><span className="rotate-180"><Icon name="chevron" size={17}/></span><span className="hidden sm:inline">Projects</span></button>
               <div className="h-6 w-px bg-white/10"/>
               <button onClick={openDescribe} className="focus-ring flex h-9 items-center gap-2 rounded-lg bg-[#e5f2f8] px-3 text-sm font-bold text-[#17272f] hover:bg-white"><Icon name="plus" size={16}/> Add Track</button>
+              <input ref={audioFileInputRef} type="file" accept="audio/*" className="hidden" onChange={importAudioFile}/>
+              <button onClick={isAudioRecording ? stopAudioRecording : startAudioRecording} className={`focus-ring flex h-9 items-center gap-1.5 rounded-lg px-2 text-xs font-bold sm:px-3 ${isAudioRecording ? 'bg-[#fb9b6d] text-[#17272f]' : 'bg-[#344b55] text-[#e5f2f8] hover:bg-[#3d5965]'}`}>
+                <Icon name={isAudioRecording ? 'pause' : 'mic'} size={15}/>{isAudioRecording ? `Stop ${formatTimelineTime(audioRecordingMs)}` : 'Record audio'}
+              </button>
+              <button onClick={() => audioFileInputRef.current?.click()} className="focus-ring flex h-9 items-center gap-1.5 rounded-lg bg-[#344b55] px-2 text-xs font-bold text-[#e5f2f8] hover:bg-[#3d5965] sm:px-3"><Icon name="plus" size={15}/> Import audio</button>
               <div className="hidden min-w-0 flex-1 text-center md:block"><h1 className="truncate text-sm font-bold">{projectTitle}</h1><p className="text-[10px] text-[#a6bdc7]">{projectTracks.length} tracks · Autosaved</p></div>
               <div className="ml-auto flex items-center gap-1">
                 <button className="focus-ring hidden h-9 rounded-lg px-3 text-xs font-bold text-[#c3d8e1] hover:bg-white/10 sm:block">Mixer</button>
@@ -1170,41 +1362,44 @@ export default function App() {
             </div>
 
             <div className="flex items-center justify-center gap-3 border-b border-black/60 bg-[#203039] px-3 py-3 md:gap-5">
-              <button aria-label="Go to beginning" className="focus-ring grid h-9 w-9 place-items-center rounded-lg text-[#e5f2f8] hover:bg-white/10"><Icon name="skipBack" size={18}/></button>
+              <button aria-label="Go to beginning" onClick={() => { if (audioRef.current) audioRef.current.currentTime = 0; updatePlayhead(0); setIsPlaying(false) }} className="focus-ring grid h-9 w-9 place-items-center rounded-lg text-[#e5f2f8] hover:bg-white/10"><Icon name="skipBack" size={18}/></button>
               <button onClick={togglePlayback} aria-label={isPlaying ? 'Pause' : 'Play'} className="focus-ring grid h-11 w-11 place-items-center rounded-full bg-[#f1f4f2] text-[#123142] shadow-lg transition hover:scale-105"><Icon name={isPlaying ? 'pause' : 'play'} size={20}/></button>
               <button aria-label="Next section" className="focus-ring grid h-9 w-9 place-items-center rounded-lg text-[#e5f2f8] hover:bg-white/10"><Icon name="skipForward" size={18}/></button>
               <div className="ml-2 grid grid-cols-3 divide-x divide-[#102630] overflow-hidden rounded-md border border-[#111512] bg-[#102630] font-mono shadow-inner">
-                <div className="px-3 py-1.5 text-center"><strong className="block text-sm font-medium text-[#8fd9fb]">5.1</strong><small className="block text-[9px] uppercase text-[#7995a2]">Position</small></div>
+                <div className="px-3 py-1.5 text-center"><strong className="block text-sm font-medium text-[#8fd9fb]">{formatTimelineTime(playheadMs)}</strong><small className="block text-[9px] uppercase text-[#7995a2]">Position</small></div>
                 <div className="hidden px-3 py-1.5 text-center sm:block"><strong className="block text-sm font-medium text-[#8fd9fb]">92</strong><small className="block text-[9px] uppercase text-[#7995a2]">Tempo</small></div>
                 <div className="hidden px-3 py-1.5 text-center sm:block"><strong className="block text-sm font-medium text-[#8fd9fb]">4/4</strong><small className="block text-[9px] uppercase text-[#7995a2]">Time</small></div>
               </div>
               <div className="ml-auto hidden items-center gap-2 text-[#a6bdc7] lg:flex"><Icon name="volume" size={17}/><div className="h-1.5 w-20 rounded-full bg-[#10242d]"><div className="h-full w-2/3 rounded-full bg-[#8f9c96]"/></div></div>
             </div>
 
+            {audioTrackStatus && <p role="status" aria-live="polite" className="border-b border-black/60 bg-[#263943] px-4 py-2 text-xs text-[#d8e7ec]">{audioTrackStatus}</p>}
             <div className="overflow-x-auto">
-              <div className="min-w-[780px]">
-                <div className="grid grid-cols-[230px_1fr] border-b border-black/60 bg-[#1d2d35]">
+              <div className="min-w-[780px]" style={{ width: `${230 + timelineWidthPx + 20}px` }}>
+                <div className="grid border-b border-black/60 bg-[#1d2d35]" style={{ gridTemplateColumns: `230px ${timelineWidthPx + 20}px` }}>
                   <div className="flex items-center justify-between border-r border-black/60 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-[#9da8a3]"><span>Track controls</span><span>{projectTracks.length}</span></div>
-                  <div className="daw-grid relative flex h-9 items-end justify-between px-4 pb-1.5 font-mono text-[10px] text-[#8d9993]">{[1,2,3,4,5,6,7,8,9].map(n => <span key={n}>{n}</span>)}<span className="absolute inset-y-0 left-[18%] z-20 w-px bg-[#fb9b6d]"><i className="absolute -left-1 top-0 h-2 w-2 rotate-45 bg-[#fb9b6d]"/></span></div>
+                  <div className="daw-grid relative h-9 overflow-hidden font-mono text-[10px] text-[#8d9993]" style={{ width: timelineWidthPx + 20 }}>
+                    {rulerMarks.map(seconds => <span key={seconds} className="absolute bottom-1" style={{ left: `${10 + seconds * TIMELINE_PIXELS_PER_SECOND}px` }}>{formatTimelineTime(seconds * 1000)}</span>)}
+                    <span className="absolute inset-y-0 z-20 w-px bg-[#fb9b6d]" style={{ left: `${10 + (playheadMs / 1000) * TIMELINE_PIXELS_PER_SECOND}px` }}><i className="absolute -left-1 top-0 h-2 w-2 rotate-45 bg-[#fb9b6d]"/></span>
+                  </div>
                 </div>
 
-                {projectTracks.length ? <div className="relative">
+                {projectTracks.length ? <div className="relative" style={{ width: `${230 + timelineWidthPx + 20}px` }}>
                   {projectTracks.map((track, index) => (
-                    <div key={`${track.name}-${index}`} onClick={() => { audioRef.current?.pause(); setIsPlaying(false); setActiveTrack(index) }} className={`grid grid-cols-[230px_1fr] border-b border-black/50 transition ${activeTrack === index ? 'bg-[#293f49]' : 'bg-[#263840] hover:bg-[#353a37]'}`}>
+                    <div key={`${track.name}-${index}`} onClick={() => { audioRef.current?.pause(); if (audioRef.current) audioRef.current.currentTime = 0; setIsPlaying(false); setActiveTrack(index); updatePlayhead(0) }} className={`grid border-b border-black/50 transition ${activeTrack === index ? 'bg-[#293f49]' : 'bg-[#263840] hover:bg-[#353a37]'}`} style={{ gridTemplateColumns: `230px ${timelineWidthPx + 20}px` }}>
                       <div className="flex h-[92px] items-center gap-3 border-r border-black/60 px-3">
                         <div className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-[#123f54] shadow-inner" style={{ background: track.color }}><Icon name={index === 0 ? 'play' : 'volume'} size={19}/></div>
                         <div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><strong className="truncate text-sm text-white">{track.name}</strong><span className="text-[10px] text-[#89a8b5]">{index + 1}</span></div><p className="mt-1 truncate text-[11px] text-[#9db2bc]">{track.desc}</p><div className="mt-2 flex items-center gap-1.5"><span className="grid h-5 w-5 place-items-center rounded bg-[#17272f] text-[9px] font-bold text-[#b9d0da]">M</span><span className="grid h-5 w-5 place-items-center rounded bg-[#17272f] text-[9px] font-bold text-[#b9d0da]">S</span><span className="ml-1 h-1 flex-1 rounded-full bg-[#102630]"><i className="block h-full w-3/5 rounded-full bg-[#79aabd]"/></span></div></div>
                       </div>
-                      <div className="daw-grid relative h-[92px] overflow-hidden p-2.5">
-                        <div className="absolute inset-y-0 left-[18%] z-20 w-px bg-[#fb9b6d]"/>
-                        <div className={`relative flex h-full items-center gap-1 overflow-hidden rounded-md border px-3 shadow-md ${activeTrack === index ? 'border-white/40' : 'border-black/30'}`} style={{ backgroundColor: track.color }}>
-                          <span className="absolute left-2 top-1 text-[9px] font-bold text-[#164f69]/70">{track.name}{track.audioUrl ? ' · Eleven Music' : ''}</span>
-                          {track.pattern.concat(track.pattern, track.pattern).map((height, i) => <i key={i} className="min-w-[2px] flex-1 rounded-full bg-[#125474]/60" style={{ height: Math.max(5, height - 8), maxWidth: 5 }}/>) }
+                      <div className="daw-grid relative h-[92px] overflow-hidden" style={{ width: timelineWidthPx + 20 }}>
+                        <div className={`relative ml-[10px] mt-2.5 flex h-[72px] items-center gap-1 overflow-hidden rounded-md border px-3 shadow-md ${activeTrack === index ? 'border-white/40' : 'border-black/30'}`} style={{ backgroundColor: track.color, width: `${Math.max(12, ((track.durationMs ?? timelineDurationMs) / 1000) * TIMELINE_PIXELS_PER_SECOND)}px` }}>
+                          <span className="absolute left-2 top-1 text-[9px] font-bold text-[#164f69]/70">{track.name}{track.audioUrl ? ' · Audio' : ''}</span>
+                          {track.pattern.concat(track.pattern, track.pattern).map((height, i) => <i key={i} className="min-w-[2px] flex-1 rounded-full bg-[#125474]/60" style={{ height: Math.max(5, height - 8), maxWidth: 'none' }}/>)}
                         </div>
                       </div>
                     </div>
                   ))}
-                  <div className="pointer-events-none absolute inset-y-0 left-[calc(230px+18%)] z-30 w-px bg-[#fb9b6d]"/>
+                  <div className="pointer-events-none absolute inset-y-0 z-30 w-px bg-[#fb9b6d]" style={{ left: `${230 + 10 + (playheadMs / 1000) * TIMELINE_PIXELS_PER_SECOND}px` }}><i className="absolute -left-1 top-0 h-2 w-2 rotate-45 bg-[#fb9b6d]"/></div>
                 </div> : <div className="grid min-h-[390px] place-items-center bg-[#21323a] p-8 text-center"><div><span className="mx-auto grid h-14 w-14 place-items-center rounded-xl bg-[#263e4b] text-[#8fd9fb]"><Icon name="sparkles" size={24}/></span><h2 className="mt-4 text-xl font-bold text-white">Start with your first track</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#9db2bc]">Describe an instrument, mood, rhythm, or scene and Cstar will create an editable region.</p><button onClick={openDescribe} className="focus-ring mt-5 rounded-lg bg-[#e5f2f8] px-5 py-2.5 text-sm font-bold text-[#17272f] hover:bg-white">Describe your first track</button></div></div>}
 
                 {projectTracks.length > 0 && <button onClick={openDescribe} className="focus-ring flex h-12 w-[230px] items-center gap-2 border-r border-black/60 bg-[#24343c] px-4 text-xs font-bold text-[#b9d0da] hover:bg-[#293f49]"><span className="grid h-6 w-6 place-items-center rounded bg-[#17272f]"><Icon name="plus" size={14}/></span> Add another track</button>}
@@ -1333,7 +1528,7 @@ export default function App() {
         <span className={`grid h-9 w-9 place-items-center rounded-xl ${readStatus === 'reading' ? 'bg-[#fb9b6d] text-[#071c2b]' : 'bg-[#046492] text-white'}`}><Icon name={readStatus === 'reading' ? 'volume' : 'accessibility'} size={19}/></span>
         <span>{readStatus === 'loading' ? 'Preparing natural voice…' : readStatus === 'reading' ? `Reading with ${narrationSource === 'elevenlabs' ? 'ElevenLabs' : 'device voice'} — Space to stop` : 'Press Space to read this page'}</span>
       </button>
-      <audio ref={audioRef} src={projectTracks[activeTrack]?.audioUrl} onEnded={() => setIsPlaying(false)} className="hidden" />
+      <audio ref={audioRef} src={projectTracks[activeTrack]?.audioUrl} onTimeUpdate={event => updatePlayhead(event.currentTarget.currentTime * 1000)} onEnded={event => { updatePlayhead(event.currentTarget.duration * 1000); setIsPlaying(false) }} className="hidden" />
     </main>
   )
 }
