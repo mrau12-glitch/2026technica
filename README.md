@@ -50,6 +50,6 @@ We want to keep improving the clarity and reliability of spoken navigation, refi
 
 We are also considering transferring Cstar into a plugin on the most used music tools. The users could access to popular existing music tools and collaborate with other musicians with the help of Cstar.
 
-## For judges and reviewers
+## For reviewers
 
 When exploring Cstar, try navigating with the keyboard and use the page-reading shortcut to hear an overview. In a project, try adding a track, recording a short drum layer, and playing the project. The prototype is an invitation to consider how music software can communicate its structure and controls through sound as well as sight.
